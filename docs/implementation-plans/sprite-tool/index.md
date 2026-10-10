@@ -36,7 +36,7 @@ Every task file repeats the ones that apply to it.
 | 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | done |
 | 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | done |
 | 06 | [Phaser export](06-phaser-export.md) | `phaser` target: sheet, JSON Hash atlas, animation JSON | 05 | done |
-| 07 | [Godot export](07-godot-export.md) | `godot` target: sheet, `SpriteFrames` `.tres` per sprite, index JSON | 05 | pending |
+| 07 | [Godot export](07-godot-export.md) | `godot` target: sheet, `SpriteFrames` `.tres` per sprite, index JSON | 05 | done |
 | 08 | [Preview](08-preview.md) | `sprite preview` for sprites, `--grid`, `--on`, contact sheet | 03, 04 | done |
 | 09 | [`init`, `new` and `guide`](09-init-new-guide.md) | Project scaffolding, blank sprite scaffolding, agent reference text | 05 | done |
 | 10 | [Import](10-import.md) | `sprite import` with `--scale` and `--snap` | 03, 04 | done |
@@ -160,6 +160,42 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Step 07, 2026-10-10, commit `1e0cab9` and the commit that adds this entry
+
+**Evidence**
+
+- `make test`: 855 passed (821 before the step; 34 new in `tests/test_export_godot.py`). `make check`: same.
+- **The headless Godot test ran and passed** (Godot 4.7.2 at `/opt/homebrew/bin/godot`). It is `test_a7_godot_loads_each_resource_as_sprite_frames`: the demo is built into a temporary Godot project, `godot --headless --import` imports the sheet, and a script loads each `.tres`. Each is a `SpriteFrames`; the animations are `default` (goblin, ground_light; 1 frame, speed 1.0, loop) and `idle` (warrior, warrior_red; 2 frames, speed 2.5, loop); the first frame of each is an `AtlasTexture` with the atlas loaded and the region given in `atlas.json`; Godot prints no `ERROR`. It skips when `godot` is not on `PATH`.
+- `uv run sprite build --project examples/demo` prints `built: 4 sprites, 6 frames, 3 targets` and exits 0; a second run leaves every file under `out/` with the same bytes; `--check` prints `up to date: 4 sprites, 6 frames, 3 targets`. `out/godot/` holds `atlas.png`, `atlas.json` and four `.tres` files. `git status` shows no new files.
+- The byte-for-byte case is `test_two_frame_sprite_gives_the_resource_in_the_design_byte_for_byte`. The Godot part of A5 is `test_a5_the_red_variant_has_its_own_resource_with_recoloured_frames`; of A14, `test_a14_units_and_the_tile_share_one_sheet_at_their_own_sizes`.
+- Every case in the task file's verification list has a test. Seven deliberate faults in `godot.py` (region offset, texture path, sub-resource type, speed, `load_steps`, animation order, the default's `loop`) each failed at least one test; the first four also failed the headless test.
+
+**Names later steps need**
+
+- `export.godot.export` is registered as `EXPORTERS["godot"]`. `godot.DEFAULT_ANIM` is `"default"`.
+- `examples/demo/sprite-tool.toml` has three `[[export]]` blocks: `frames`, `phaser`, then `godot` to `out/godot` with `name = "atlas"`, `res_path = "res://sprites"` and the default padding of 1. `tests/test_demo.py` asserts this list.
+- The demo's Godot sheet has the same bytes as its Phaser sheet (`test_the_sheet_is_the_one_the_phaser_target_packs`).
+- `tests/test_export_godot.py` has `parse(tres)` (load steps, texture path, regions by sub-resource id, animations), `copy_demo(root, exports)` and `godot(project, home, *args)`, which step 11 can reuse for golden files or the speed test.
+
+**Choices the task file left open**
+
+- **`atlas.json` is written by `manifest.json_bytes`**, like every other generated JSON file, so each rectangle is spread over several lines. The task file's example shows them on one line; its rule (sorted keys, two-space indent, trailing newline) is what was followed.
+- **Animations are ordered by name**, which is how Godot orders them when it saves a `SpriteFrames`. Frames within an animation keep their order, and a frame named twice is listed twice.
+- **Every frame has a sub-resource**, in file order, whether or not an animation uses it. The index lists every frame too.
+- **`speed` is Python's shortest float text for `1000 / ms`**: `2.5`, `1.0`, `3.3333333333333335` for 300 ms.
+- **A `res_path` that ends in `/`** (`res://`) is joined to the sheet name without a second slash.
+- **Strings are escaped** (backslash, double quote, newline, tab), because animation names are not restricted. Files are UTF-8.
+- **Index values come from the canvas** (`anchor`, `size`, `display_scale`); frame rectangles come from the placement.
+- **No sprites** gives a 64 x 2 sheet and `{}`, with no `.tres` files.
+
+**Notes**
+
+- **The headless test gives Godot a home directory under `tmp_path`** (`HOME` and `CFFIXED_USER_HOME`, and the `XDG_*` variables for Linux). Without it Godot creates `~/Library/Application Support/Godot/app_userdata/<project name>/` on macOS, which would break the rule that tests write only under `tmp_path`. One such folder, `sprite-tool A7`, was created while writing the test and has been removed.
+- Godot writes `atlas.png.import` next to the sheet on first import. The manifest does not list it, so `sprite build` leaves it alone, as intended.
+- An `ms` above about 10^7 would make `speed` print in exponent form (`1e-05`). Godot reads that, but it has no decimal point.
+- The headless test adds about 1.4 s to `make test` (2.5 s in total). Step 11's speed test should not count it.
+- A7's manual half (opening the export in the Godot editor and playing an animation) is still for step 11.
 
 ### Step 10, 2026-10-10, commits `6064243`, `94c086e`, and the commit that adds this entry
 

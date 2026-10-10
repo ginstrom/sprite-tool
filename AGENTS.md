@@ -62,7 +62,10 @@ Everything runs through `uv`.
 - `src/sprite_tool/export/__init__.py`: `EXPORTERS`, one exporter per target
   type. An exporter returns `{relative path: bytes}` and never touches the
   disk. `export/frames.py` is the loose-PNG target; `export/phaser.py` is the
-  Phaser atlas target (sheet, JSON Hash atlas, animation JSON).
+  Phaser atlas target (sheet, JSON Hash atlas, animation JSON);
+  `export/godot.py` is the Godot target (sheet, a `SpriteFrames` `.tres` per
+  sprite, JSON index). `tests/test_export_godot.py` loads the export in
+  headless Godot when `godot` is on `PATH`, and skips that test otherwise.
 - `src/sprite_tool/preview.py`: the images `sprite preview` writes
   (`sprite_preview`, `on_tile`, `contact_sheet`). Layout sizes are named
   constants, which the tests use. Previews are written straight to

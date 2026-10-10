@@ -24,3 +24,9 @@ out = "out/frames"
 type = "phaser"
 out = "out/phaser"
 name = "atlas"
+
+[[export]]
+type = "godot"
+out = "out/godot"
+name = "atlas"
+res_path = "res://sprites"
