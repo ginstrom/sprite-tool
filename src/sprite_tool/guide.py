@@ -31,11 +31,14 @@ A grid has one line per pixel row and one character per pixel. Each character is
 '.' is transparent. The grid must be exactly the canvas size, with no trailing spaces. Rows and
 columns count from 0 at the top left, in `rows` and in check messages (`row 2, col 4`).
 Positions written `file:line:col` count from 1.
+Frame names are free; `<anim>_<n>` is only a habit. A replacement row is a full row. Sprite files
+may be anywhere in the project; `sprite new` writes to the project root unless given `--dir`.
 """
 
 _RULES = """\
 outline <keys>: a pixel with a transparent pixel or the canvas edge directly above, below, left
-  or right of it must use one of the keys.
+  or right of it must use one of the keys. Diagonals do not count, so a part 1 or 2 pixels
+  wide is all outline.
 grounded: the bottom row of every frame must have a pixel.
 A sprite opts out with `outline = false` or `grounded = false` at the top of its file.
 """

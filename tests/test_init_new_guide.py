@@ -389,3 +389,11 @@ def test_guide_outside_a_project_exits_2(empty, capsys):
     assert captured.out == ""
     assert captured.err.startswith("error: ")
     assert "sprite-tool.toml" in captured.err
+
+
+def test_guide_covers_what_the_agent_trial_had_to_guess(capsys):
+    text = " ".join(guide(DEMO, capsys).split())
+    assert "Diagonals do not count, so a part 1 or 2 pixels wide is all outline" in text
+    assert "Sprite files may be anywhere in the project" in text
+    assert "A replacement row is a full row" in text
+    assert "Frame names are free" in text
