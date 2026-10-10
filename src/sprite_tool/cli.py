@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterable, Sequence
 from importlib import resources
 from pathlib import Path
 
-from . import check, importer, manifest, render, spritefile
+from . import __version__, check, importer, manifest, render, spritefile
 from . import preview as preview_module
 from . import guide as guide_module
 from . import project as project_module
@@ -129,7 +129,22 @@ def _init(args: argparse.Namespace) -> int:
     except OSError as exc:
         return _usage_error(f"cannot write project: {exc}")
     print(f"created {root.as_posix()} ({count(len(targets), 'file')})")
+    # Nothing else tells an agent working in the game repository that the tool is there.
+    print(f"for agents, add to AGENTS.md: {agent_note(root)}")
     return EXIT_OK
+
+
+REPOSITORY = "https://github.com/ginstrom/sprite-tool"
+
+
+def agent_note(root: Path) -> str:
+    """The lines that tell an agent in the game repository how to get the tool and start drawing."""
+    project = "" if root == Path(".") else f" --project {root.as_posix()}"
+    tag = "" if __version__ == "unknown" else f"@v{__version__}"
+    return (
+        f"Sprites are made with sprite-tool (`uv tool install git+{REPOSITORY}{tag}`). "
+        f"Run `sprite guide{project}` before drawing or changing one."
+    )
 
 
 def _guide(args: argparse.Namespace) -> int:
@@ -391,6 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="sprite",
         description="Turn text sprite definitions into pixel art for Godot 4 and Phaser.",
     )
+    parser.add_argument("--version", action="version", version=f"sprite {__version__}")
     commands = parser.add_subparsers(dest="command", required=True, metavar="<command>")
 
     in_project = argparse.ArgumentParser(add_help=False)

@@ -34,22 +34,74 @@ in, not for a round-trip workflow.
 
 ## Install
 
-Python 3.11 or later, with [uv](https://docs.astral.sh/uv/):
+The tool is installed on the machine of whoever draws sprites. The game
+itself needs nothing: it uses the exported files, which are committed.
+
+With [uv](https://docs.astral.sh/uv/), which fetches Python 3.11 or later if
+it is missing:
 
 ```sh
-uv tool install git+https://github.com/ginstrom/sprite-tool
+uv tool install git+https://github.com/ginstrom/sprite-tool@v0.2.0
+sprite --version         # sprite 0.2.0
 ```
+
+Name a tag, as above, so that everyone on a game builds the same files; leave
+`@v0.2.0` off to follow `main`. To move to a newer release, run the command
+again with the new tag and `--force`. The tool is not on PyPI.
+
+Other ways to run it:
+
+```sh
+# without installing, for example in CI
+uvx --from git+https://github.com/ginstrom/sprite-tool@v0.2.0 sprite build --check
+
+# with pipx
+pipx install git+https://github.com/ginstrom/sprite-tool@v0.2.0
+```
+
+Install it as a tool, as above, and not as a dependency of a Python game. It
+pins Pillow to one minor release to keep its output byte-identical, and that
+pin would otherwise have to agree with the game's own.
+
+### Setting up a game repository
+
+```sh
+cd my-game
+sprite init art          # the art project, in a directory of the game repository
+```
+
+- **Point the exports at the game.** In `art/sprite-tool.toml`, set `out` of
+  an `[[export]]` block to where the game loads its sprites from (see Export
+  targets). Commit `art/` and the exported files.
+- **Tell agents.** `sprite init` prints a line to add to the game's
+  `AGENTS.md` or `CLAUDE.md`. It names the install command and
+  `sprite guide`, which is all an agent needs to find its way in.
+- **Give the build a name** in whatever the game already uses, so nobody has
+  to remember the tool's name. In a `package.json`:
+
+  ```json
+  "scripts": {
+    "sprites": "sprite build --project art",
+    "sprites:check": "sprite build --check --project art"
+  }
+  ```
+
+- **Guard it in CI** (see Commit the output, and guard it). On GitHub Actions:
+
+  ```yaml
+  - uses: astral-sh/setup-uv@v6
+  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.2.0 sprite build --check --project art
+  ```
 
 ## Quick start
 
 ```sh
 sprite init art          # sprite-tool.toml, palette.toml and one example sprite
-cd art
 sprite guide             # the file format, this project's palette and canvas classes
 sprite new archer --canvas unit
-# draw in archer.sprite.toml
+# draw in art/archer.sprite.toml
 sprite check             # list problems; fix them until it prints `ok`
-sprite preview archer --grid   # writes .preview/archer.grid.png to look at
+sprite preview archer --grid   # writes art/.preview/archer.grid.png to look at
 sprite build             # check everything, then write the game's files
 ```
 
@@ -71,15 +123,17 @@ the current directory.
 
 | Command | What it does |
 |---|---|
-| `sprite init [dir]` | Write a starter project. Refuses if its files already exist. |
+| `sprite init [dir]` | Write a starter project, and print the line that tells agents about it. Refuses if its files already exist. |
 | `sprite guide` | Print the format reference, palette and canvas classes. |
 | `sprite new <id> --canvas <class> [--dir <subdir>]` | Write a blank sprite file. |
 | `sprite check [<file>...] [--canvas <class>]` | Check every sprite file, or the given sprite files and PNGs. |
 | `sprite preview [<id>...] [--grid] [--scale N] [--on <tile-id>] [--sheet]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. |
 | `sprite build [--check] [--adopt]` | Check everything, then write every export target. |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. |
+| `sprite --version` | Print the tool's version. |
 
-Output is meant to be cheap to read. Success prints one summary line. Each
+Output is meant to be cheap to read. Success prints one summary line (`init`
+adds the line for agents). Each
 problem is one line, `path:line:col: CODE message`. There is no colour and no
 progress output. Exit codes are `0` for success, `1` for check failures and
 `2` for a usage or configuration error (`error: <message>` on stderr).

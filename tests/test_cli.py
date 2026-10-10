@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from importlib import metadata
 
 import pytest
 
@@ -16,6 +17,13 @@ def test_help_lists_all_subcommands(capsys):
     out = capsys.readouterr().out
     for name in SUBCOMMANDS:
         assert name in out
+
+
+def test_version_matches_the_package_metadata(capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--version"])
+    assert excinfo.value.code == 0
+    assert capsys.readouterr().out == f"sprite {metadata.version('sprite-tool')}\n"
 
 
 def test_parsed_arguments():

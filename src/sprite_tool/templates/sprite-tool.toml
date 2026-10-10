@@ -1,4 +1,5 @@
-# sprite-tool project. Paths are relative to this file. Run `sprite guide` for the sprite file format.
+# sprite-tool project (https://github.com/ginstrom/sprite-tool). Paths are relative to this file.
+# Run `sprite guide` for the sprite file format.
 version = 1
 palette = "palette.toml"
 

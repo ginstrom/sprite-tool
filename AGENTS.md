@@ -27,7 +27,8 @@ Everything runs through `uv`.
 - **Tests.** No test may need a display or the network. Tests write only under
   pytest's `tmp_path`; they never write into `examples/demo/` or
   `tests/golden/`.
-- **Output.** Success prints one summary line. Each problem is one line on
+- **Output.** Success prints one summary line; `init` alone adds a second,
+  the note for agents (`cli.agent_note`). Each problem is one line on
   stdout. No colour, banners or progress output. Exit codes: `0` success, `1`
   check failures, `2` usage or config error (message on stderr as
   `error: <message>`).
@@ -36,6 +37,17 @@ Everything runs through `uv`.
   version into generated files. Previews are exempt.
 - **Safe writes.** Export files are only created, overwritten or deleted
   through the manifest.
+
+## Releases
+
+The version is `version` in `pyproject.toml`; `sprite --version` and the note
+`sprite init` prints read it from the installed package. Games install by tag,
+so a release is a tag:
+
+1. Set the new version in `pyproject.toml`, run `uv lock`, and change the tag
+   in the README's install commands.
+2. `make check`, commit, then `git tag -a v<version>` and push the branch and
+   the tag.
 
 ## Golden files
 

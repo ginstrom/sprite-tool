@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from conftest import write_project
+from sprite_tool import __version__
 from sprite_tool.cli import main
 from sprite_tool.project import load
 
@@ -37,7 +38,7 @@ def empty(tmp_path: Path, monkeypatch) -> Path:
 def test_a1_init_then_build_in_an_empty_directory(empty, capsys):
     assert main(["init"]) == 0
     captured = capsys.readouterr()
-    assert captured.out == "created . (3 files)\n"
+    assert captured.out.splitlines()[0] == "created . (3 files)"
     assert captured.err == ""
 
     assert main(["build"]) == 0
@@ -53,7 +54,7 @@ def test_init_writes_four_files(empty):
 
 def test_init_creates_the_named_directory(empty, capsys):
     assert main(["init", "art/sprites"]) == 0
-    assert capsys.readouterr().out == "created art/sprites (3 files)\n"
+    assert capsys.readouterr().out.splitlines()[0] == "created art/sprites (3 files)"
     assert sorted(files(empty / "art" / "sprites")) == INIT_FILES
     assert sorted(files(empty)) == [f"art/sprites/{name}" for name in INIT_FILES]
 
@@ -94,8 +95,21 @@ def test_init_refusal_names_the_directory(empty, capsys):
 def test_init_leaves_an_existing_gitignore_alone(empty, capsys):
     (empty / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
     assert main(["init"]) == 0
-    assert capsys.readouterr().out == "created . (3 files)\n"
+    assert capsys.readouterr().out.splitlines()[0] == "created . (3 files)"
     assert (empty / ".gitignore").read_text(encoding="utf-8") == "node_modules/\n"
+
+
+@pytest.mark.parametrize(("argv", "command"), [(["init"], "sprite guide"), (["init", "art"], "sprite guide --project art")])
+def test_init_prints_the_note_for_agents(empty, capsys, argv, command):
+    assert main(argv) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 2
+    assert lines[1].startswith("for agents, add to AGENTS.md: ")
+    assert f"git+https://github.com/ginstrom/sprite-tool@v{__version__}`" in lines[1]
+    assert f"`{command}`" in lines[1]
+
+    # The command in the note works from where `init` was run.
+    assert main(command.split()[1:]) == 0
 
 
 def test_init_on_a_file_exits_2(empty, capsys):

@@ -161,6 +161,16 @@ there.
 
 ## Completion log
 
+### After the plan: release 0.2.0, installing into a game, 2026-10-10
+
+The review fixes below were released as tag `v0.1.0`. This release makes the tool easier to set up in a game repository. `make check`: 900 passed, then `ok: 4 sprites, 6 frames`; golden files unchanged.
+
+- **`sprite --version`** prints the installed version.
+- **`sprite init`** prints a second line to add to the game's `AGENTS.md`: the install command for the running version and the `sprite guide` command for that directory. The starter `sprite-tool.toml` names the repository in its first comment.
+- **README** install section: install by tag, `uvx` and `pipx`, why it is a tool and not a dependency (the Pillow pin), and how to set up a game repository (exports, the agent note, a `package.json` script, CI).
+- **AGENTS.md** has the release steps.
+- **Not done:** the tool is not on PyPI.
+
 ### After the plan: review fixes, 2026-10-10
 
 Changes made after a review of the finished tool. The design was revised to match (sections 4.1, 4.5, 4.6, 4.8). `make check`: 897 passed, then `ok: 4 sprites, 6 frames`; golden files unchanged.

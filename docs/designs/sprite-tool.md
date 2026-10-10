@@ -313,13 +313,16 @@ failures, `2` usage or config error.
 
 | Command | Behavior | Output on success |
 |---|---|---|
-| `sprite init [dir]` | Write `sprite-tool.toml`, `palette.toml`, one example sprite and a `.gitignore` for `.preview/`. Refuses if `sprite-tool.toml` exists. | `created <dir> (3 files)` |
+| `sprite init [dir]` | Write `sprite-tool.toml`, `palette.toml`, one example sprite and a `.gitignore` for `.preview/`. Refuses if `sprite-tool.toml` exists. | `created <dir> (3 files)`, then one line to add to the game's `AGENTS.md`: the install command for this version and the `sprite guide` command |
 | `sprite guide` | Print the format reference, palette legend (key, hex, name) and canvas classes with their rules. | The guide |
 | `sprite new <id> --canvas <class> [--dir <subdir>]` | Write a sprite file with one all-transparent frame named `main`. Refuses to overwrite. | The path |
 | `sprite check [paths...]` | Check all sprite files, or only the given files. `.png` paths are checked as images and need `--canvas <class>`. | `ok: 12 sprites, 31 frames` |
 | `sprite preview [id...] [--scale N] [--grid] [--on <tile-id>] [--sheet]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
 | `sprite build [--check]` | Run `check` on everything, then write every export target. With `--check`, write nothing and exit 1 if any generated file is missing or differs. | `built: 12 sprites, 31 frames, 3 targets` |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. Refuses to overwrite. | The path |
+
+`sprite --version` prints `sprite <version>`. Games install the tool by git
+tag (`v<version>`), so that everyone working on a game builds the same bytes.
 
 `sprite build` never writes partial output: if `check` fails, no file is
 touched. A blank sprite (W003) is not a failure; it is left out of the build.
