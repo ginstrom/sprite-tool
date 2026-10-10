@@ -31,14 +31,14 @@ one-shot generation is still cheaper than the setup.
 | ID | Requirement |
 |---|---|
 | R1 | A project has one **palette file** mapping single-character keys to colours. All sprites draw only from it. |
-| R2 | A project config defines named **canvas classes** (for example `unit`, `tile`), each with a fixed size, an anchor point and optional style rules. |
+| R2 | A project config defines named **canvas classes** (for example `unit`, `tile`), each with its own fixed size, an anchor point, a display scale and optional style rules. Classes of different sizes (32x32 units, 16x16 tiles) coexist in one project, one palette and one atlas. |
 | R3 | Each sprite is one **text file**: a canvas class, one or more frames given as character grids, and optional animations. The tool contains no sprite definitions. |
 | R4 | A frame can be **derived** from another frame (row overrides, shift, horizontal flip) so an animation does not repeat a full grid per frame. |
 | R5 | A sprite can declare **palette-swap variants** (for example team colours) that render as additional sprites. |
 | R6 | `check` reports **unknown palette keys, wrong dimensions, and style-rule violations** with file, line and column. It also checks existing PNG files for off-palette pixels and wrong dimensions. |
 | R7 | `build` renders every sprite and writes each configured **export target**: loose frame PNGs, a Phaser atlas, and a Godot atlas with `SpriteFrames` resources. |
 | R8 | Atlas export **packs** all frames into one sheet deterministically, with padding between frames. |
-| R9 | `preview` writes an **upscaled PNG** of one sprite (all frames, optional pixel grid) and a **contact sheet** of all sprites, so an agent can look at the result. |
+| R9 | `preview` writes an **upscaled PNG** of one sprite (all frames, optional pixel grid), optionally standing on a tile sprite, and a **contact sheet** of all sprites, so an agent can look at the result. |
 | R10 | `new` scaffolds a blank sprite file for a canvas class; `import` converts an existing PNG into a sprite file. |
 | R11 | `guide` prints a compact reference: file format, the project's palette legend and its canvas classes. This is the only thing an agent needs to read before drawing. |
 | R12 | `init` scaffolds a project (config, starter palette, one example sprite). |
@@ -80,6 +80,8 @@ one-shot generation is still cheaper than the setup.
 | A10 | `sprite import` on a canvas-sized PNG whose colours are all in the palette writes a sprite file that renders back to the identical image. | R10 |
 | A11 | `sprite check some.png --canvas unit` reports off-palette pixels by coordinate and a size mismatch. | R6 |
 | A12 | After a sprite is deleted, `sprite build` removes its generated files and leaves unrelated files in the output directory untouched. | Q4 |
+| A14 | A project with a 32x32 `unit` sprite and a 16x16 `tile` sprite builds; both appear in one atlas at their own sizes, and a 16-wide row in the unit sprite is reported as E103. | R2, R8 |
+| A15 | `sprite preview warrior --on ground_light` writes one PNG showing the unit on the tile, each at its class's display scale. | R9 |
 | A13 | `sprite guide` output for the example project is under 60 lines. | R11, Q2 |
 
 ## 3. Current system
@@ -116,9 +118,9 @@ outside this repository).
 **Implications for this design**
 
 - Both games draw 16 px art at 4x today, giving a 64 px cell. The author has
-  chosen **32x32** as the target size for new art; drawn at 2x it fills the
-  same 64 px cell. Canvas classes default to 32x32, anchor bottom-centre for
-  units, top-left for tiles.
+  chosen **32x32 for character sprites and 16x16 for environment tiles**.
+  The `init` template defines `unit` as 32x32 (anchor bottom-centre) and
+  `tile` as 16x16 (anchor top-left).
 - Both games load loose PNGs by stable name today, so the loose-PNG target is
   the drop-in path. Atlas targets are for animation later.
 - Neither game should need Python at build time. Generated files are
@@ -178,12 +180,14 @@ palette = "palette.toml"
 [canvas.unit]
 size = [32, 32]          # width, height in pixels
 anchor = [16, 32]        # pixel point exported as the pivot; here bottom centre
+display_scale = 2        # how much the game enlarges this class; default 1
 outline = ["k"]          # optional style rule, see 4.6
 grounded = true          # optional style rule, see 4.6
 
 [canvas.tile]
-size = [32, 32]
+size = [16, 16]
 anchor = [0, 0]
+display_scale = 4
 
 [preview]
 scale = 6                # default upscale for `sprite preview`
@@ -204,6 +208,15 @@ out = "../assets/sprites"
 name = "atlas"
 res_path = "res://assets/sprites"   # where `out` sits inside the Godot project
 ```
+
+Each canvas class has its own size, so one project mixes sizes freely. A
+sprite's size comes only from its class; there is no per-sprite size.
+
+`display_scale` records the integer factor the game draws that class at. The
+tool never resizes exported art. It uses the value in previews (4.8) and
+writes it to the Godot index file (4.7) so the game can read it instead of
+hard-coding it. In the template, a 16 px tile at 4x and a 32 px unit at 2x
+both cover a 64 px cell.
 
 All paths are relative to the config file. `[[export]]` may appear any number
 of times, including zero. Unknown keys anywhere in the config are an error
@@ -294,7 +307,7 @@ failures, `2` usage or config error.
 | `sprite guide` | Print the format reference, palette legend (key, hex, name) and canvas classes with their rules. | The guide |
 | `sprite new <id> --canvas <class> [--dir <subdir>]` | Write a sprite file with one all-transparent frame named `main`. Refuses to overwrite. | The path |
 | `sprite check [paths...]` | Check all sprite files, or only the given files. `.png` paths are checked as images and need `--canvas <class>`. | `ok: 12 sprites, 31 frames` |
-| `sprite preview [id...] [--scale N] [--grid] [--sheet]` | Write `.preview/<id>.png` for each id. With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first. | One path per line |
+| `sprite preview [id...] [--scale N] [--grid] [--on <tile-id>] [--sheet]` | Write `.preview/<id>.png` for each id. With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first. | One path per line |
 | `sprite build [--check]` | Run `check` on everything, then write every export target. With `--check`, write nothing and exit 1 if any generated file is missing or differs. | `built: 12 sprites, 31 frames, 3 targets` |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. Refuses to overwrite. | The path |
 
@@ -380,7 +393,7 @@ canvas size.
   animation with the same name, `speed = 1000 / ms`, and `loop` as declared.
   A sprite with no animations gets one animation named `default` holding all
   frames at speed 1.
-- `<name>.json`: a plain index, `{"<id>": {"anchor": [x, y], "size": [w, h],
+- `<name>.json`: a plain index, `{"<id>": {"anchor": [x, y], "size": [w, h], "display_scale": n,
   "frames": {"<frame>": [x, y, w, h]}}}`, because `SpriteFrames` cannot carry
   an anchor.
 - The tool does not write `.import` files or `uid`s. Godot creates those on
@@ -419,7 +432,14 @@ otherwise it is a config error (exit 2). The example config in 4.3 shows
   row and column in the margin with its zero-based index, so a viewer can name
   a pixel by `row, col`. Those are the same indices used by `rows` and by
   check messages.
-- The contact sheet shows every sprite's default frame at 2x, grouped by
+- `--on <tile-id>` draws each requested sprite's default frame standing on
+  the named sprite, the way the game would: each is enlarged by its own
+  class's `display_scale` times a common factor (`--scale`, default 2), and
+  the sprite's anchor is placed at the bottom-centre of the tile. This is the
+  check that characters and tiles read well together. `--grid` is ignored
+  with `--on`.
+- The contact sheet shows every sprite's default frame at its class's
+  `display_scale`, grouped by
   canvas class and sorted by id, with the id under each sprite. It is the
   consistency check: everything side by side at one scale.
 - Preview files go to `.preview/` in the project and are not committed.
@@ -623,20 +643,21 @@ animations = [{
 
 - **Generated files are committed to the game repository.** Neither game's
   build then needs Python (yomi builds in a Node container; fantasy-tactics
-  runs Godot directly). The cost is generated binaries in git history; at 32
-  px the files are tiny. `sprite build --check` in each game's `make check`
+  runs Godot directly). The cost is generated binaries in git history; at
+  these sizes the files are tiny. `sprite build --check` in each game's `make check`
   guards against sources and outputs drifting apart.
 - **Sprites are capped at one character per colour**, so a palette holds at
   most about 90 colours. That is a deliberate limit: small palettes are a
   large part of visual consistency.
-- **32x32 costs about four times the tokens of 16x16 per full grid** (1,024
+- **A 32x32 unit grid costs about four times the tokens of 16x16 per full grid** (1,024
   characters a frame). Derived frames (R4) and variants (R5) matter more at
   this size: an animation should be one full grid plus small row overrides.
-- **Adopting the tool changes sprite sizes in both games.** Both currently
+- **Adopting the tool changes unit sizes in both games.** Both currently
   scale 16 px art by 4 (fantasy-tactics in code, yomi through per-unit
-  `displayHeight` in `BattleScene.ts`). With 32 px full-canvas frames,
-  fantasy-tactics scales by 2 instead, and yomi's display heights need
-  resetting because its current sprites are trimmed to different sizes.
+  `displayHeight` in `BattleScene.ts`). With 32 px full-canvas unit frames,
+  fantasy-tactics scales units by 2 instead, and yomi's display heights need
+  resetting because its current sprites are trimmed to different sizes. Tiles
+  stay 16 px, so tile drawing code is unaffected.
 - **The outline rule is strict** (four-sided, single list of keys). It will
   reject some legitimate styles such as coloured outlines unless those keys
   are listed, or the sprite opts out. Strict by default is the point; the
@@ -671,6 +692,7 @@ display or network.
 | Import | Render a demo sprite, import the PNG, re-render, compare; `--snap` report; oversize failure. | A10 |
 | PNG check | Fixture PNGs with one off-palette pixel and a wrong size. | A11 |
 | Manifest | Delete a sprite and rebuild; pre-existing unowned file blocks the build; `--adopt`; shared-directory conflict. | A12 |
+| Mixed sizes | Demo project has a 32x32 unit and a 16x16 tile; assert atlas regions, per-class dimension errors, and the `--on` preview size. | A14, A15 |
 | Guide | Line count and presence of every palette key and canvas class. | A13 |
 | Golden files | `examples/demo` output is committed under `tests/golden/`; `build --check` against it must pass. | Q1 |
 
@@ -694,9 +716,11 @@ None of these block planning.
 - **Engines.** Godot 4.7 and Phaser 4, taken from the two sibling game
   repositories rather than stated by the author. If only one matters, drop
   the other exporter; nothing else changes.
-- **Scale.** 32 px art is drawn at 2x, to fill the 64 px cell both games use
-  today. Sizes are config, so this only affects the `init` template and the
-  contact-sheet scale.
+- **Scale.** Units are drawn at 2x and tiles at 4x, so both cover the 64 px
+  cell the games use today. That means a tile pixel is twice the size of a
+  character pixel on screen. The alternative is one scale for both (a unit is
+  then two tiles wide and tall). This is `display_scale` in the config, so it
+  can change at any time without touching the tool or the art; see question 2.
 - **Units face right** in source art and games flip them, as yomi does.
 - **Phaser reads `pivot` from JSON Hash frames.** Believed true for Phaser 3
   and 4; the implementer should confirm against Phaser 4 during A6 and fall
@@ -709,7 +733,7 @@ None of these block planning.
 ### Decisions made by the author (2026-10-10)
 
 - **Licence:** MIT.
-- **Sprite size:** 32x32 for units and tiles.
+- **Sprite size:** 32x32 for character sprites, 16x16 for environment tiles.
 - **Palette:** each game has its own palette file. `init` writes a starter
   palette (Sweetie 16, free to use, keys chosen as mnemonics) that the game
   then edits.
@@ -719,3 +743,8 @@ None of these block planning.
 1. **Larger units.** Bosses on a 48x48 or 64x64 canvas work today as another
    canvas class. Whether they need a different outline or grounded rule is an
    art decision for later.
+2. **Pixel density.** With tiles at 4x and units at 2x, the two do not share
+   a pixel size, which some find visually inconsistent. Drawing both at one
+   scale fixes that but makes a unit cover 2x2 tiles, which changes board
+   layout in the games. `sprite preview --on` exists to judge this by eye
+   before committing to either.
