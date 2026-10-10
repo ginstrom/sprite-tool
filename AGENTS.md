@@ -55,6 +55,12 @@ Everything runs through `uv`.
 - `src/sprite_tool/pack.py`: the shelf packer. Works on sizes only.
 - `src/sprite_tool/export/atlas.py`: `compose_sheet`, the one sheet layout
   shared by the atlas targets.
+- `src/sprite_tool/export/__init__.py`: `EXPORTERS`, one exporter per target
+  type. An exporter returns `{relative path: bytes}` and never touches the
+  disk. `export/frames.py` is the loose-PNG target.
+- `src/sprite_tool/manifest.py`: the only code that creates, overwrites or
+  deletes export files (`plan`, `check_ownership`, `apply`, `compare`), and
+  `json_bytes`, the one JSON encoder for generated files.
 - `tests/conftest.py`: `write_project` and the `project_dir` fixture for
   building a project under `tmp_path`; `make_frame`, `make_sprite` and
   `pixels` for tests that build sprites directly.

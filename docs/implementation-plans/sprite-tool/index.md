@@ -34,7 +34,7 @@ Every task file repeats the ones that apply to it.
 | 02 | [Sprite file parser](02-sprite-file-parser.md) | `*.sprite.toml` parsed into sprites with derived frames, variants and source positions | 01 | done |
 | 03 | [Checks, `check` command and demo project](03-checks-and-demo.md) | Style and PNG checks, working `sprite check`, `examples/demo/` sources | 02 | done |
 | 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | done |
-| 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | pending |
+| 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | done |
 | 06 | [Phaser export](06-phaser-export.md) | `phaser` target: sheet, JSON Hash atlas, animation JSON | 05 | pending |
 | 07 | [Godot export](07-godot-export.md) | `godot` target: sheet, `SpriteFrames` `.tres` per sprite, index JSON | 05 | pending |
 | 08 | [Preview](08-preview.md) | `sprite preview` for sprites, `--grid`, `--on`, contact sheet | 03, 04 | pending |
@@ -160,6 +160,41 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Step 05, 2026-10-10, commits `fa4f3c5`, `74061d9`, and the commit that adds this entry
+
+**Evidence**
+
+- `make test`: 642 passed (578 before the step; 32 new in `tests/test_manifest.py`, 5 in `tests/test_export_frames.py`, 28 in `tests/test_build.py`; 1 stub case for `build` removed from `tests/test_cli.py`). `make check`: same.
+- `uv run sprite build --project examples/demo` prints `built: 4 sprites, 6 frames, 1 target` and exits 0, twice; `--check` then prints `up to date: 4 sprites, 6 frames, 1 target`. `git status` shows no new files (`out/` is ignored).
+- A2 is `test_a2_palette_change_recolours_that_key_and_nothing_else`; the `frames` part of A5 is `test_a5_red_variant_is_the_base_with_its_colours_swapped`; A12 is `test_a12_deleted_sprite_is_cleaned_up_and_other_files_are_left`.
+- The unowned-file block, `--adopt`, the shared-directory conflict, "a failing check writes nothing" and "a second build rewrites no file" each have a test in `tests/test_build.py` and in `tests/test_manifest.py`.
+
+**Names later steps need**
+
+- **The JSON helper is `manifest.json_bytes(obj) -> bytes`**: sorted keys, two-space indent, `\n` line endings, trailing newline, ASCII only (non-ASCII characters are written as `\uXXXX` escapes).
+- `export.EXPORTERS: dict[str, Exporter]` in `src/sprite_tool/export/__init__.py`, holding `"frames"`. Steps 06 and 07 add an import and one entry each. The exporter signature is the one in the task file; `images` is typed as a `Mapping`.
+- `manifest.MANIFEST_NAME` is `".sprite-tool-manifest.json"`. `manifest.target_key(target)` gives `frames` or `<type>:<name>`.
+- `manifest.plan(outputs) -> list[Plan]` takes `[(target, files)]`, groups by output directory and reads the manifests on disk. `manifest.check_ownership(plans)`, `manifest.apply(plans)` and `manifest.compare(plans) -> list[Problem]` do the rest. `cli._build` is the only caller.
+- `examples/demo/sprite-tool.toml` has one `[[export]]` block, `frames` to `out/frames`.
+- `tests/test_build.py` has the `demo` fixture (a copy of `examples/demo/` under `tmp_path`, without `out/`), `set_exports(root, text)` to replace the config's `[[export]]` blocks, and `tree(root)`. Steps 06 and 07 can import or copy them.
+
+**Choices the task file left open**
+
+- **An existing file that is not in the manifest blocks the build even when its bytes already match**, so ownership is never taken without `--adopt`. The message names the first such file and counts the rest: `error: <path> and 2 more already exists and was not written by sprite-tool (use --adopt to overwrite)`.
+- **The manifest is one of the generated files.** It is rewritten only when its bytes change, and `build --check` reports it as `missing` or `stale` like any other file. So `--check` after a sprite is deleted prints two lines: the manifest `stale` and the PNG `no longer generated`.
+- **`build --check` does no ownership check** and ignores `--adopt`. An unowned file with different bytes is `stale`. The shared-directory conflict and a damaged manifest are still exit 2.
+- **`build --check` prints warnings and E401 lines together**, with one summary line counting both.
+- **A manifest that cannot be trusted is exit 2**: invalid JSON, a version other than 1, or an entry that is not a plain relative path inside the directory (absolute, containing `..` or a backslash, or the manifest itself). Listed files get deleted, so such an entry is refused instead of followed.
+- **A target type with no exporter** is `error: export target type 'phaser' is not available in this version`, raised before any check output.
+- **Write order** in each directory: delete stale files, write the manifest, write the other files. If a write fails part-way, the files already written are owned and the next build finishes the job.
+- **A target that is removed from the config** has its files deleted on the next build only if another target still writes to the same directory. A directory that no target uses any more is never read.
+- Files are written in place, not through a temporary file.
+
+**Notes**
+
+- Directories left empty after cleanup are not removed. No current target writes into subdirectories.
+- `frames` file names can collide if one sprite is called `a__b` and another, `a`, has a frame `b`. The later file wins without a message. Not handled here; a check in `check.py` would be the place.
 
 ### Step 03, 2026-10-10, commits `e1e4eae`, `9874710`, `52a0ec9`, and the commit that adds this entry
 
