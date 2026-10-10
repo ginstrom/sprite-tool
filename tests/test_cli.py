@@ -9,14 +9,12 @@ from sprite_tool.cli import main
 
 SUBCOMMANDS = ["init", "guide", "new", "check", "preview", "build", "import"]
 
-# One valid invocation per subcommand, using every flag it declares.
+# One valid invocation per subcommand that is still a stub, using every flag it declares.
 INVOCATIONS = {
     "init": ["init"],
     "init dir": ["init", "sprites"],
     "guide": ["guide", "--project", "p"],
     "new": ["new", "warrior", "--canvas", "unit", "--dir", "units", "--project", "p"],
-    "check": ["check", "a.sprite.toml", "b.png", "--canvas", "unit", "--project", "p"],
-    "check all": ["check"],
     "preview": ["preview", "warrior", "goblin", "--scale", "8", "--grid", "--on", "grass", "--sheet", "--project", "p"],
     "preview all": ["preview"],
     "build": ["build", "--check", "--adopt", "--project", "p"],
@@ -25,7 +23,7 @@ INVOCATIONS = {
 
 
 @pytest.mark.parametrize("argv", INVOCATIONS.values(), ids=INVOCATIONS.keys())
-def test_every_subcommand_is_declared_with_a_stub(argv, capsys):
+def test_unimplemented_subcommands_are_stubs(argv, capsys):
     assert main(argv) == 2
     captured = capsys.readouterr()
     assert captured.out == ""

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
+from . import check, spritefile
 from . import project as project_module
-from .model import Problem, Project
+from .model import Problem, Project, Sprite, format_problem
 from .project import CONFIG_NAME, ConfigError
 
 EXIT_OK = 0
@@ -33,9 +34,97 @@ def load_project(args: argparse.Namespace) -> tuple[Project, list[Problem]]:
     return project_module.load(root)
 
 
-def _not_implemented(args: argparse.Namespace) -> int:
-    print("error: not implemented", file=sys.stderr)
+def load_checked(
+    args: argparse.Namespace, extra: Sequence[Path] = ()
+) -> tuple[Project, list[Sprite], list[Problem]]:
+    """Load the project and every sprite file in it, and run the checks.
+
+    Returns the sprites, variants included, and every problem in output
+    order. `extra` names sprite files to load as well as the ones found. When
+    the palette has problems, no sprite is loaded and only those problems are
+    returned.
+    """
+    project, problems = load_project(args)
+    sprites: list[Sprite] = []
+    if not problems:
+        paths = sorted({*spritefile.discover(project.root), *extra})
+        sprites, problems = spritefile.load_all(project, paths)
+        problems += check.run(project, sprites)
+    return project, sprites, sorted(problems, key=_output_order)
+
+
+def report(problems: Iterable[Problem], root: Path) -> int:
+    """Print one line per problem, then the summary line if any is an error.
+
+    Returns the number of errors. With warnings only it prints no summary, so
+    the caller can print its own success line.
+    """
+    problems = sorted(problems, key=_output_order)
+    for problem in problems:
+        print(format_problem(problem, root))
+    errors = sum(1 for problem in problems if _is_error(problem))
+    if errors:
+        warnings = len(problems) - errors
+        files = len({problem.path for problem in problems})
+        print(f"{count(errors, 'error')}, {count(warnings, 'warning')} in {count(files, 'file')}")
+    return errors
+
+
+def count(number: int, noun: str) -> str:
+    """`1 sprite`, `2 sprites`."""
+    return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
+
+
+def _output_order(problem: Problem) -> tuple[Path, int, int, str]:
+    return problem.path, problem.line, problem.col, problem.code
+
+
+def _is_error(problem: Problem) -> bool:
+    return problem.code.startswith("E")
+
+
+def _usage_error(message: str) -> int:
+    print(f"error: {message}", file=sys.stderr)
     return EXIT_USAGE
+
+
+def _not_implemented(args: argparse.Namespace) -> int:
+    return _usage_error("not implemented")
+
+
+def _check(args: argparse.Namespace) -> int:
+    given = [Path(path) for path in args.paths]
+    images = [path for path in given if path.suffix.lower() == ".png"]
+    # Resolved, to match the paths that `spritefile.discover` returns.
+    chosen = {path.resolve() for path in given if path.name.endswith(spritefile.SUFFIX)}
+    for path in given:
+        if path not in images and path.resolve() not in chosen:
+            return _usage_error(f"{path}: not a {spritefile.SUFFIX} or .png file")
+    if images and args.canvas is None:
+        return _usage_error("--canvas <class> is required to check a PNG")
+
+    project, sprites, problems = load_checked(args, sorted(chosen))
+    palette_failed = any(problem.path == project.palette_path and _is_error(problem) for problem in problems)
+    if images and not palette_failed:
+        canvas = project.canvases.get(args.canvas)
+        if canvas is None:
+            expected = ", ".join(project.canvases)
+            return _usage_error(f"unknown canvas class {args.canvas!r} (expected one of {expected})")
+        for path in images:
+            problems += check.check_png(project, path, canvas)
+    if given and not palette_failed:
+        shown = chosen | set(images)
+        problems = [problem for problem in problems if problem.path in shown]
+        sprites = [sprite for sprite in sprites if sprite.source in chosen]
+
+    if report(problems, project.root):
+        return EXIT_CHECK_FAILED
+    frames = sum(len(sprite.frames) for sprite in sprites)
+    summary = f"ok: {count(len(sprites), 'sprite')}, {count(frames, 'frame')}"
+    if images:
+        summary += f", {count(len(images), 'image')}"
+    print(summary)
+    return EXIT_OK
 
 
 # One handler per subcommand. Each takes the parsed arguments and returns the exit code.
@@ -43,7 +132,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "init": _not_implemented,
     "guide": _not_implemented,
     "new": _not_implemented,
-    "check": _not_implemented,
+    "check": _check,
     "preview": _not_implemented,
     "build": _not_implemented,
     "import": _not_implemented,
