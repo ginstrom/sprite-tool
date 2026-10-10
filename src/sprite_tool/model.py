@@ -23,6 +23,8 @@ class Canvas:
     display_scale: int
     outline: frozenset[str] | None
     grounded: bool
+    # The first key of the outline list, which `outline = "auto"` draws with.
+    outline_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,8 @@ class Sprite:
 
     outline / grounded: whether the canvas rule applies after per-sprite opt-out.
     variant_of: the base sprite id for a variant, else None.
+    auto_outline: the file says `outline = "auto"`; the frames already hold
+    the outline the tool drew.
     """
 
     id: str
@@ -69,6 +73,7 @@ class Sprite:
     outline: bool
     grounded: bool
     variant_of: str | None
+    auto_outline: bool = False
 
 
 @dataclass(frozen=True)

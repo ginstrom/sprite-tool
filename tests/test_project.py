@@ -41,6 +41,7 @@ def test_load_valid_project(project_dir):
             display_scale=2,
             outline=frozenset({"k"}),
             grounded=True,
+            outline_key="k",
         ),
         "tile": Canvas(
             name="tile",
@@ -82,6 +83,23 @@ def test_load_applies_defaults(tmp_path):
     assert project.canvases["unit"].grounded is False
     assert project.preview == PreviewConfig(scale=6, background=(0x3A, 0x3A, 0x3A, 255))
     assert project.exports == ()
+
+
+OUTLINE_KEY_CASES = {
+    "one key": ('outline = ["k"]', "k"),
+    "first of several, not the first in sorted order": ('outline = ["o", "k"]', "o"),
+    "empty list": ("outline = []", None),
+    "no rule": ("", None),
+}
+
+
+@pytest.mark.parametrize("line, expected", OUTLINE_KEY_CASES.values(), ids=OUTLINE_KEY_CASES.keys())
+def test_outline_key_is_the_first_key_of_the_outline_list(tmp_path, line, expected):
+    palette = '[colors]\nk = "#000000"\no = "#111111"\n'
+    project, problems = load(write_project(tmp_path, MINIMAL_CONFIG + line + "\n", palette))
+
+    assert problems == []
+    assert project.canvases["unit"].outline_key == expected
 
 
 def test_atlas_name_defaults_to_atlas(tmp_path):

@@ -200,10 +200,15 @@ def _outline_problems(sprite: Sprite, frame: Frame, where: str, faults: Sequence
     faults = list(faults)
     expected = _quoted(sorted(sprite.canvas.outline or ()), "or")
     located = frame.literal and frame.line > 0
+    # The tool drew the outline, so what is left is interior with no room for one.
+    on_edge = sprite.auto_outline and sprite.variant_of is None
     problems = []
     for r, c in faults[:MAX_E201_PER_FRAME]:
         key = frame.rows[r][c]
-        what = f"{key!r} touches transparency, expected outline key {expected}"
+        if on_edge:
+            what = f'{key!r} is on the canvas edge; with outline = "auto" keep the interior 1 pixel inside'
+        else:
+            what = f"{key!r} touches transparency, expected outline key {expected}"
         if located:
             problems.append(Problem(sprite.source, frame.line + r, c + 1, "E201", f"{where}: {what}"))
         else:

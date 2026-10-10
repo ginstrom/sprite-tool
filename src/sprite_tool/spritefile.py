@@ -72,6 +72,28 @@ def _load_file(path: Path, project: Project) -> tuple[list[Sprite], list[Problem
     return parser.parse(data), parser.problems
 
 
+def add_outline(rows: tuple[str, ...], key: str) -> tuple[str, ...]:
+    """`rows` with `key` on every transparent pixel directly above, below,
+    left or right of a drawn one.
+
+    One pass over the rows as given: the new pixels grow no outline of their
+    own, and diagonals do not count, so corners come out rounded.
+    """
+    height = len(rows)
+    width = len(rows[0]) if rows else 0
+
+    def drawn(r: int, c: int) -> bool:
+        return 0 <= r < height and 0 <= c < width and rows[r][c] != TRANSPARENT
+
+    def pixel(r: int, c: int) -> str:
+        if rows[r][c] != TRANSPARENT:
+            return rows[r][c]
+        beside = drawn(r - 1, c) or drawn(r + 1, c) or drawn(r, c - 1) or drawn(r, c + 1)
+        return key if beside else TRANSPARENT
+
+    return tuple("".join(pixel(r, c) for c in range(width)) for r in range(height))
+
+
 # --- source positions -------------------------------------------------------
 
 
@@ -210,7 +232,7 @@ class _Parser:
         canvas = self._canvas(data)
         if canvas is None:
             return []
-        outline = self._flag(data, "outline")
+        outline, auto_outline = self._outline(data, canvas)
         grounded = self._flag(data, "grounded")
         resolved = self._frames(data.get("frames"), canvas)
         anims = self._anims(data.get("anim", {}), resolved)
@@ -219,6 +241,10 @@ class _Parser:
         frames = tuple(frame for frame in resolved.values() if frame is not None)
         if not frames:
             return []
+        if auto_outline:
+            # Only now, on each frame's final interior: any earlier and a
+            # derived frame would edit its parent's outline.
+            frames = tuple(replace(frame, rows=add_outline(frame.rows, canvas.outline_key)) for frame in frames)
         sprite = Sprite(
             id=self.path.name.removesuffix(SUFFIX),
             source=self.path,
@@ -228,6 +254,7 @@ class _Parser:
             outline=canvas.outline is not None and outline,
             grounded=canvas.grounded and grounded,
             variant_of=None,
+            auto_outline=auto_outline,
         )
         return [sprite, *(_variant(sprite, name, swap) for name, swap in swaps.items())]
 
@@ -241,6 +268,22 @@ class _Parser:
             expected = ", ".join(self.project.canvases)
             self.report("E101", f"unknown canvas class {name!r} (expected one of {expected})", "canvas")
         return canvas
+
+    def _outline(self, data: dict[str, Any], canvas: Canvas) -> tuple[bool, bool]:
+        """Whether the sprite asks for the outline rule, and whether the tool draws the outline.
+
+        A value that cannot be used is reported and read as `true`.
+        """
+        value = data.get("outline", True)
+        if isinstance(value, bool):
+            return value, False
+        if value != "auto":
+            self.report("E001", 'outline must be true, false or "auto"', "outline")
+        elif canvas.outline_key is None:
+            self.report("E001", f'outline = "auto" needs an outline rule on canvas class {canvas.name!r}', "outline")
+        else:
+            return True, True
+        return True, False
 
     def _flag(self, data: dict[str, Any], key: str) -> bool:
         value = data.get(key, True)

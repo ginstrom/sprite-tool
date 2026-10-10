@@ -184,9 +184,11 @@ def _load_canvas(name: str, table: Any) -> Canvas:
         raise ConfigError(f"{CONFIG_NAME}: {where}anchor must be within 0..{width} and 0..{height}")
 
     outline = table.get("outline")
+    outline_key = None
     if outline is not None:
         if not isinstance(outline, list) or not all(isinstance(key, str) for key in outline):
             raise ConfigError(f"{CONFIG_NAME}: {where}outline must be a list of palette keys")
+        outline_key = outline[0] if outline else None
         outline = frozenset(outline)
 
     grounded = table.get("grounded", False)
@@ -201,6 +203,7 @@ def _load_canvas(name: str, table: Any) -> Canvas:
         display_scale=_int_at_least(table, "display_scale", 1, 1, where),
         outline=outline,
         grounded=grounded,
+        outline_key=outline_key,
     )
 
 

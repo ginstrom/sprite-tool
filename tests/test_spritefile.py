@@ -5,7 +5,7 @@ import pytest
 from conftest import write_project
 from sprite_tool.model import format_problem
 from sprite_tool.project import load
-from sprite_tool.spritefile import discover, load_all
+from sprite_tool.spritefile import add_outline, discover, load_all
 
 # `tiny` and `plain` are 4 wide and 3 high so that a width/height mix-up shows.
 CONFIG = """\
@@ -930,3 +930,215 @@ def test_derived_frame_records_how_it_was_made(project):
     literal, derived = sprites[0].frames
     assert (literal.parent, literal.shift, literal.flip) == (None, (0, 0), False)
     assert (derived.parent, derived.shift, derived.flip) == ("idle_0", (1, -1), True)
+
+
+# --- automatic outline ----------------------------------------------------
+
+
+def test_add_outline_puts_the_key_on_each_transparent_pixel_beside_a_drawn_one():
+    # Diagonals do not count, so the corners stay clear.
+    assert add_outline((".....", ".....", "..w..", ".....", "....."), "k") == (
+        ".....",
+        "..k..",
+        ".kwk.",
+        "..k..",
+        ".....",
+    )
+
+
+def test_add_outline_is_one_pass_and_does_not_outline_its_own_outline():
+    assert add_outline((".......", "...w...", "......."), "k") == (
+        "...k...",
+        "..kwk..",
+        "...k...",
+    )
+
+
+def test_add_outline_outlines_a_hole_inside_the_shape():
+    interior = (
+        ".......",
+        ".wwwww.",
+        ".w...w.",
+        ".w...w.",
+        ".w...w.",
+        ".wwwww.",
+        ".......",
+    )
+    assert add_outline(interior, "k") == (
+        ".kkkkk.",
+        "kwwwwwk",
+        "kwkkkwk",
+        "kwk.kwk",
+        "kwkkkwk",
+        "kwwwwwk",
+        ".kkkkk.",
+    )
+
+
+def test_add_outline_fills_a_one_pixel_hole():
+    assert add_outline((".....", ".www.", ".w.w.", ".www.", "....."), "k") == (
+        ".kkk.",
+        "kwwwk",
+        "kwkwk",
+        "kwwwk",
+        ".kkk.",
+    )
+
+
+def test_add_outline_leaves_a_shape_on_the_edge_without_an_outline_on_that_side():
+    assert add_outline(("ww..", "ww..", "...."), "k") == ("wwk.", "wwk.", "kk..")
+
+
+def test_add_outline_keeps_drawn_pixels_and_a_blank_grid():
+    assert add_outline(("....", ".kb.", "...."), "k") == (".kk.", "kkbk", ".kk.")
+    assert add_outline(("...", "..."), "k") == ("...", "...")
+
+
+# `unit` is 7 wide and 6 high: room for a shape with a leg gap and its outline.
+AUTO_CONFIG = """\
+version = 1
+
+[canvas.unit]
+size = [7, 6]
+anchor = [3, 6]
+outline = ["k"]
+grounded = true
+
+[canvas.plain]
+size = [7, 6]
+anchor = [0, 0]
+
+[canvas.bare]
+size = [7, 6]
+anchor = [0, 0]
+outline = []
+"""
+
+# `outline` is on line 2; `main = """` is on line 5, so row n is on line 6 + n.
+AUTO = '''\
+canvas = "unit"
+outline = "auto"
+
+[frames]
+main = """
+.......
+..www..
+.wwbww.
+..www..
+..w.w..
+.......
+"""
+'''
+
+AUTO_INTERIOR = (".......", "..www..", ".wwbww.", "..www..", "..w.w..", ".......")
+AUTO_OUTLINED = ("..kkk..", ".kwwwk.", "kwwbwwk", ".kwwwk.", ".kwkwk.", "..k.k..")
+
+
+@pytest.fixture
+def auto_project(tmp_path):
+    loaded, problems = load(write_project(tmp_path / "sprites", AUTO_CONFIG, PALETTE))
+    assert problems == []
+    return loaded
+
+
+def test_auto_outline_draws_the_outline_round_the_interior(auto_project):
+    (sprite,), problems = load_text(auto_project, AUTO)
+
+    assert problems == []
+    assert sprite.frames[0].rows == AUTO_OUTLINED
+    assert (sprite.outline, sprite.auto_outline) == (True, True)
+
+
+def test_auto_outline_keeps_a_grid_frame_at_its_lines(auto_project):
+    (sprite,), _ = load_text(auto_project, AUTO)
+    assert (sprite.frames[0].literal, sprite.frames[0].line) == (True, 6)
+
+
+@pytest.mark.parametrize("line", ["", "outline = true\n", "outline = false\n"])
+def test_sprite_without_auto_outline_keeps_its_rows_as_written(auto_project, line):
+    (sprite,), problems = load_text(auto_project, AUTO.replace('outline = "auto"\n', line))
+
+    assert problems == []
+    assert sprite.frames[0].rows == AUTO_INTERIOR
+    assert sprite.auto_outline is False
+
+
+def test_auto_outline_uses_the_first_key_of_the_outline_list(tmp_path):
+    config = AUTO_CONFIG.replace('outline = ["k"]', 'outline = ["r", "k"]')
+    project, _ = load(write_project(tmp_path, config, PALETTE))
+    (sprite,), problems = load_text(project, AUTO)
+
+    assert problems == []
+    assert sprite.frames[0].rows == tuple(row.replace("k", "r") for row in AUTO_OUTLINED)
+
+
+def test_auto_outline_of_a_runs_frame(auto_project):
+    text = AUTO.split("[frames]")[0] + (
+        "[frames.main.runs]\n"
+        '1 = [[2, "www"]]\n2 = [[1, "wwbww"]]\n3 = [[2, "www"]]\n4 = [[2, "w"], [4, "w"]]\n'
+    )
+    (sprite,), problems = load_text(auto_project, text)
+
+    assert problems == []
+    assert sprite.frames[0].rows == AUTO_OUTLINED
+
+
+def test_frame_derived_with_rows_edits_the_interior_of_an_auto_sprite(auto_project):
+    # Without the legs the outline closes under the body. Editing the parent's
+    # outlined grid would instead leave its feet behind on the bottom row.
+    text = AUTO + '\n[frames.legless]\nfrom = "main"\nrows = { 4 = "......." }\n'
+    (sprite,), problems = load_text(auto_project, text)
+
+    assert problems == []
+    assert frame_rows(sprite, "main") == AUTO_OUTLINED
+    assert frame_rows(sprite, "legless") == ("..kkk..", ".kwwwk.", "kwwbwwk", ".kwwwk.", "..kkk..", ".......")
+
+
+def test_frame_derived_with_shift_moves_the_interior_of_an_auto_sprite(auto_project):
+    # The parent has no room for an outline on its left; the shifted frame does.
+    # Shifting the parent's outlined grid would leave column 0 clear.
+    text = AUTO.replace(".wwbww.", "wwwbww.") + '\n[frames.right]\nfrom = "main"\nshift = [1, 0]\n'
+    (sprite,), problems = load_text(auto_project, text)
+
+    assert problems == []
+    assert frame_rows(sprite, "main")[2] == "wwwbwwk"
+    assert frame_rows(sprite, "right") == ("...kkk.", ".kkwwwk", "kwwwbww", ".kkwwwk", "..kwkwk", "...k.k.")
+
+
+def test_frame_derived_with_flip_is_outlined_after_the_flip(auto_project):
+    text = AUTO.replace(".wwbww.", "wwwbw..") + '\n[frames.left]\nfrom = "main"\nflip = true\n'
+    (sprite,), problems = load_text(auto_project, text)
+
+    assert problems == []
+    assert frame_rows(sprite, "left")[2] == ".kwbwww"
+
+
+def test_variant_of_an_auto_sprite_swaps_the_outlined_frame(auto_project):
+    text = AUTO + '\n[variants.red]\nswap = { b = "r", k = "w" }\n'
+    (base, red), problems = load_text(auto_project, text)
+
+    assert problems == []
+    assert red.auto_outline is True
+    assert red.frames[0].rows == tuple(row.translate(str.maketrans("bk", "rw")) for row in AUTO_OUTLINED)
+
+
+@pytest.mark.parametrize("canvas", ["plain", "bare"])
+def test_auto_outline_on_a_class_with_no_outline_key_is_e001_at_the_outline_line(auto_project, canvas):
+    (sprite,), problems = load_text(auto_project, AUTO.replace('"unit"', f'"{canvas}"'))
+
+    assert positions(problems) == [(2, 1, "E001")]
+    assert problems[0].message == f"outline = \"auto\" needs an outline rule on canvas class '{canvas}'"
+    # The rest of the file is still read, as a sprite with `outline = true`.
+    assert sprite.frames[0].rows == AUTO_INTERIOR
+    assert sprite.auto_outline is False
+    assert sprite.outline is (canvas == "bare")
+
+
+@pytest.mark.parametrize("value", ['"foo"', "3", '"true"', "[]"])
+def test_outline_that_is_not_true_false_or_auto_is_e001(auto_project, value):
+    (sprite,), problems = load_text(auto_project, AUTO.replace('"auto"', value))
+
+    assert positions(problems) == [(2, 1, "E001")]
+    assert problems[0].message == 'outline must be true, false or "auto"'
+    assert (sprite.outline, sprite.auto_outline) == (True, False)
+    assert sprite.frames[0].rows == AUTO_INTERIOR

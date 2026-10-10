@@ -4,7 +4,7 @@ import pytest
 from PIL import Image
 
 from conftest import write_project
-from sprite_tool import check
+from sprite_tool import check, render
 from sprite_tool.model import format_problem
 from sprite_tool.project import load
 from sprite_tool.spritefile import load_all
@@ -447,3 +447,113 @@ def test_file_that_is_not_an_image_is_e001(project):
 
 def test_missing_png_is_e001(project):
     assert positions(check_png(project, project.root / "nope.png")) == [(0, 0, "E001")]
+
+
+# --- automatic outline --------------------------------------------------------
+
+# `unit` is 7 wide and 6 high: room for a shape with a leg gap and its outline.
+AUTO_CONFIG = """\
+version = 1
+
+[canvas.unit]
+size = [7, 6]
+anchor = [3, 6]
+outline = ["k"]
+grounded = true
+"""
+
+# `main = """` is on line 5, so row n is on line 6 + n.
+AUTO = '''\
+canvas = "unit"
+outline = "auto"
+
+[frames]
+main = """
+.......
+..www..
+.wwbww.
+..www..
+..w.w..
+.......
+"""
+'''
+
+BY_HAND = '''\
+canvas = "unit"
+
+[frames]
+main = """
+..kkk..
+.kwwwk.
+kwwbwwk
+.kwwwk.
+.kwkwk.
+..k.k..
+"""
+'''
+
+EDGE_B = "'b' is on the canvas edge; with outline = \"auto\" keep the interior 1 pixel inside"
+EDGE_W = EDGE_B.replace("'b'", "'w'")
+
+
+@pytest.fixture
+def auto_project(tmp_path):
+    return load_project(tmp_path / "sprites", AUTO_CONFIG)
+
+
+def test_a16_auto_outlined_sprite_passes_and_renders_as_its_hand_outlined_twin(auto_project):
+    files = {"auto.sprite.toml": AUTO, "by_hand.sprite.toml": BY_HAND}
+    assert run_files(auto_project, files) == []
+
+    auto, by_hand = load_all(auto_project)[0]
+    png = [render.png_bytes(render.render(sprite.frames[0], auto_project.palette)) for sprite in (auto, by_hand)]
+    assert auto.auto_outline and not by_hand.auto_outline
+    assert png[0] == png[1]
+
+
+def test_a17_interior_pixel_on_the_canvas_edge_of_an_auto_sprite_is_e201_at_that_pixel(auto_project):
+    problems = run_text(auto_project, AUTO.replace(".wwbww.", "bwwbww."))
+    assert lines(auto_project, problems) == [f"hero.sprite.toml:8:1: E201 frame 'main': {EDGE_B}"]
+
+
+def test_interior_on_the_bottom_row_of_an_auto_sprite_is_e201_for_each_pixel(auto_project):
+    problems = run_text(auto_project, AUTO.replace("..w.w..\n.......", "..w.w..\n..w.w.."))
+    assert positions(problems) == [(11, 3, "E201"), (11, 5, "E201")]
+    assert all(problem.message.endswith(EDGE_W) for problem in problems)
+
+
+def test_edge_fault_in_a_runs_frame_of_an_auto_sprite_names_its_row_and_col(auto_project):
+    text = (
+        'canvas = "unit"\noutline = "auto"\n\n[frames.main.runs]\n'
+        '1 = [[2, "www"]]\n2 = [[0, "bwwbww"]]\n3 = [[2, "www"]]\n4 = [[2, "w"], [4, "w"]]\n'
+    )
+    problems = run_text(auto_project, text)
+    assert lines(auto_project, problems) == [
+        f"hero.sprite.toml:4:1: E201 frame 'main' row 2, col 0: {EDGE_B}"
+    ]
+
+
+def test_edge_fault_of_an_auto_sprite_is_not_repeated_in_a_derived_frame(auto_project):
+    text = AUTO.replace(".wwbww.", "bwwbww.") + '\n[frames.blink]\nfrom = "main"\nrows = { 1 = "..wbw.." }\n'
+    assert positions(run_text(auto_project, text)) == [(8, 1, "E201")]
+
+
+def test_frame_shifted_onto_the_edge_of_an_auto_sprite_is_e201_at_its_definition(auto_project):
+    text = AUTO + '\n[frames.lean]\nfrom = "main"\nshift = [-1, 0]\n'
+    problems = run_text(auto_project, text)
+    assert lines(auto_project, problems) == [
+        f"hero.sprite.toml:14:1: E201 frame 'lean' row 2, col 0: {EDGE_W}"
+    ]
+
+
+def test_variant_that_recolours_the_auto_outline_is_e201_with_the_variant_wording(auto_project):
+    problems = run_text(auto_project, AUTO + '\n[variants.pale]\nswap = { k = "w" }\n')
+    assert len(problems) == 11
+    assert format_problem(problems[0], auto_project.root) == (
+        "hero.sprite.toml:6:3: E201 variant 'hero_pale' frame 'main': "
+        "'w' touches transparency, expected outline key 'k'"
+    )
+
+
+def test_variant_of_an_auto_sprite_that_keeps_the_outline_key_passes(auto_project):
+    assert run_text(auto_project, AUTO + '\n[variants.red]\nswap = { b = "r" }\n') == []
