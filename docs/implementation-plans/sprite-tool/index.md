@@ -35,7 +35,7 @@ Every task file repeats the ones that apply to it.
 | 03 | [Checks, `check` command and demo project](03-checks-and-demo.md) | Style and PNG checks, working `sprite check`, `examples/demo/` sources | 02 | done |
 | 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | done |
 | 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | done |
-| 06 | [Phaser export](06-phaser-export.md) | `phaser` target: sheet, JSON Hash atlas, animation JSON | 05 | pending |
+| 06 | [Phaser export](06-phaser-export.md) | `phaser` target: sheet, JSON Hash atlas, animation JSON | 05 | done |
 | 07 | [Godot export](07-godot-export.md) | `godot` target: sheet, `SpriteFrames` `.tres` per sprite, index JSON | 05 | pending |
 | 08 | [Preview](08-preview.md) | `sprite preview` for sprites, `--grid`, `--on`, contact sheet | 03, 04 | pending |
 | 09 | [`init`, `new` and `guide`](09-init-new-guide.md) | Project scaffolding, blank sprite scaffolding, agent reference text | 05 | pending |
@@ -134,7 +134,7 @@ step if you disagree.
 | P7 | **Checks on variants.** Running every check on each variant repeats the same problem once per variant. | Variant sprites get only E003 and E201. | 03 |
 | P8 | **Packer order.** The packer is given no frame index, but must order by frame order in the file. | Callers pass frames in file order; the packer sorts stably by height then sprite id. | 04 |
 | P9 | **Lines without a position.** No format is given for problems that have no line (E401, a missing file). | `path: CODE message`. `build --check` prints `up to date: N sprites, M frames, T targets` on success. | 01, 05 |
-| P10 | **Phaser per-frame `duration`.** Older Phaser 3 releases add it to the base frame time instead of replacing it. The design also asks to confirm that `pivot` is read. | Write what the design specifies; confirm both in Phaser 4 in step 06's in-engine check and adjust the exporter if needed. | 06 |
+| P10 | **Phaser per-frame `duration`.** Older Phaser 3 releases add it to the base frame time instead of replacing it. The design also asks to confirm that `pivot` is read. | Write what the design specifies. **Confirmed in Phaser 4.2.1 in step 06:** `pivot` sets the origin, and a frame's `duration` replaces the base frame time. The exporter needed no change. | 06 |
 | P11 | **Godot `default` animation.** `loop` is not specified for sprites with no animations. | `loop` is `true`. | 07 |
 | P12 | **Golden file layout.** | Demo targets write to `examples/demo/out/{frames,phaser,godot}` (gitignored). Golden copies live in `tests/golden/{frames,phaser,godot}` and are regenerated with `make golden`. | 05, 11 |
 
@@ -160,6 +160,44 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Step 06, 2026-10-10, commit `027319c` and the commit that adds this entry
+
+**Evidence**
+
+- `make test`: 664 passed (642 before the step; 22 new in `tests/test_export_phaser.py`). `make check`: same.
+- `uv run sprite build --project examples/demo` prints `built: 4 sprites, 6 frames, 2 targets` and exits 0, twice; `--check` then prints `up to date: 4 sprites, 6 frames, 2 targets`. `out/phaser/` holds `atlas.png`, `atlas.json` and `atlas.anims.json`. `git status` shows no new files.
+- The Phaser part of A5 is `test_frame_keys_cover_every_sprite_and_frame_including_the_variant` and `test_a5_red_variant_frame_differs_from_the_base`; the Phaser part of A14 is `test_a14_units_and_the_tile_share_one_sheet_at_their_own_sizes`.
+- Every case in the task file's verification list has a test. `test_build_writes_the_phaser_target` runs the target through `sprite build` with a custom `name` and `padding`.
+
+**In-engine check (A6, decision P10)**
+
+Run in a scratch copy of yomi (Phaser 4.2.1, WebGL, `pixelArt: true`), served by Vite in the `yomi-dev` container and opened in headless Chrome 154. A scratch scene called `this.load.atlas` and `this.load.animation` on the demo's export, added sprites with no `setOrigin` call, and recorded each `ANIMATION_UPDATE`. Values were read back from the page and a screenshot was taken. Nobody watched it in a browser window; the first build into yomi is the time to do that.
+
+- **Loads.** All six frames and both animations were present. No console errors.
+- **Pivot is read.** Units had origin `(0.5, 1)` and the tile `(0, 0)` without `setOrigin`; a 32x32 unit at scale 4 placed at `(120, 200)` had bounds `x 56..184, y 72..200`. No `setOrigin` fallback is needed.
+- **Timing is right.** 14 frame changes per animation over 6 s were 399 to 401 ms apart, alternating `idle_0` and `idle_1`. In Phaser 4.2.1 a frame's `duration` replaces the base frame time (`Animation.getNextTick`: `currentFrame.duration || msPerFrame`). The animation's own `frameRate` stays at Phaser's default of 24 and is not used.
+- **Art.** In the screenshot the warrior, goblin and tile are drawn correctly with hard pixel edges and no bleed from neighbouring frames, and `warrior_red` has red in place of blue.
+- The exporter was not changed after the check. `~/play/yomi` was not touched.
+
+**Names later steps need**
+
+- `export.phaser.export` is registered as `EXPORTERS["phaser"]`. Step 07 adds its import and entry next to it.
+- `examples/demo/sprite-tool.toml` has two `[[export]]` blocks: `frames` to `out/frames`, then `phaser` to `out/phaser` with `name = "atlas"` and the default padding of 1. `tests/test_demo.py` asserts this list, so step 07 must add its target there.
+- The demo's Phaser sheet is 128 x 67.
+
+**Choices the task file left open**
+
+- **`pivot` values are always written as decimals** (`0.0`, `1.0`), because they come from a division.
+- **The exporter sorts sprites by id itself**, so its output does not depend on the order it is given.
+- **Frame entries are sized from the placement** (the rendered image), as `compose_sheet` does, not from the canvas.
+- **No sprites** gives a 64 x 2 sheet, `"frames": {}` and `"anims": []`.
+- An animation that names the same frame twice lists it twice.
+
+**Notes**
+
+- A sprite id or frame name containing `/` would make frame keys ambiguous. Ids are file stems, so only a frame or animation name could do it. Not handled here.
+- For the scratch run, `node_modules` was mounted read-only, so Vite needed `--configLoader native` and a `cacheDir` outside `node_modules`. This matters only for repeating the check.
 
 ### Step 05, 2026-10-10, commits `fa4f3c5`, `74061d9`, and the commit that adds this entry
 

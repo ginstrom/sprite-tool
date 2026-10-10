@@ -57,7 +57,8 @@ Everything runs through `uv`.
   shared by the atlas targets.
 - `src/sprite_tool/export/__init__.py`: `EXPORTERS`, one exporter per target
   type. An exporter returns `{relative path: bytes}` and never touches the
-  disk. `export/frames.py` is the loose-PNG target.
+  disk. `export/frames.py` is the loose-PNG target; `export/phaser.py` is the
+  Phaser atlas target (sheet, JSON Hash atlas, animation JSON).
 - `src/sprite_tool/manifest.py`: the only code that creates, overwrites or
   deletes export files (`plan`, `check_ownership`, `apply`, `compare`), and
   `json_bytes`, the one JSON encoder for generated files.
