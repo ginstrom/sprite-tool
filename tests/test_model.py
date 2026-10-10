@@ -62,3 +62,17 @@ def test_format_problem_relative_path_outside_root_is_unchanged(tmp_path):
         path=Path("../art/hero.png"), line=0, col=0, code="E301", message="wrong size"
     )
     assert format_problem(problem, tmp_path) == "../art/hero.png: E301 wrong size"
+
+
+def test_format_problem_at_a_pixel_prints_x_then_y(tmp_path):
+    problem = Problem(
+        path=tmp_path / "hero.png", line=7, col=3, code="E302", message="off palette", pixel=True
+    )
+    assert format_problem(problem, tmp_path) == "hero.png:3,7: E302 off palette"
+
+
+def test_format_problem_at_the_first_pixel_keeps_its_position(tmp_path):
+    problem = Problem(
+        path=tmp_path / "hero.png", line=0, col=0, code="E302", message="off palette", pixel=True
+    )
+    assert format_problem(problem, tmp_path) == "hero.png:0,0: E302 off palette"

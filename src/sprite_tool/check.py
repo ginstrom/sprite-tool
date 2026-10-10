@@ -9,10 +9,13 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
-from .model import Frame, Problem, Project, Sprite
+from PIL import Image
+
+from .model import Canvas, Frame, Problem, Project, Sprite
 
 TRANSPARENT = "."
 MAX_E201_PER_FRAME = 10
+MAX_E302_PER_FILE = 10
 
 
 def run(project: Project, sprites: Sequence[Sprite]) -> list[Problem]:
@@ -159,3 +162,42 @@ def _outline_problems(sprite: Sprite, frame: Frame, where: str, faults: Sequence
         noun = "problem" if extra == 1 else "problems"
         problems.append(_at_frame(sprite, frame, "E201", f"{extra} more outline {noun} in {where}"))
     return problems
+
+
+# --- PNG files --------------------------------------------------------------
+
+
+def check_png(project: Project, path: Path, canvas: Canvas) -> list[Problem]:
+    """E301 and E302 for one image file; E001 if it cannot be read.
+
+    An E302 problem is at a pixel: `col` is x and `line` is y.
+    """
+    try:
+        with Image.open(path) as opened:
+            image = opened.convert("RGBA")
+    except (OSError, ValueError, SyntaxError) as exc:
+        return [Problem(path, 0, 0, "E001", f"cannot read image: {exc}")]
+
+    problems = []
+    if image.size != (canvas.width, canvas.height):
+        message = f"image is {image.width}x{image.height}, canvas {canvas.name!r} is {canvas.width}x{canvas.height}"
+        problems.append(Problem(path, 0, 0, "E301", message))
+
+    off_palette = [
+        (index, rgba)
+        for index, rgba in enumerate(image.get_flattened_data())
+        if not is_palette_colour(project, rgba)
+    ]
+    for index, rgba in off_palette[:MAX_E302_PER_FILE]:
+        y, x = divmod(index, image.width)
+        problems.append(Problem(path, y, x, "E302", f"colour {_hex(rgba)} is not in the palette", pixel=True))
+    extra = len(off_palette) - MAX_E302_PER_FILE
+    if extra > 0:
+        noun = "pixel" if extra == 1 else "pixels"
+        problems.append(Problem(path, 0, 0, "E302", f"{extra} more {noun} not in the palette"))
+    return problems
+
+
+def is_palette_colour(project: Project, rgba: tuple[int, int, int, int]) -> bool:
+    """Whether an image pixel is transparent (alpha 0) or exactly a palette colour."""
+    return rgba[3] == 0 or any(color.rgba == rgba for color in project.palette.values())

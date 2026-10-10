@@ -68,11 +68,15 @@ class Sprite:
 
 @dataclass(frozen=True)
 class Problem:
+    """line=0: no position. pixel=True: a pixel of an image, `col` is x and
+    `line` is y, both zero-based."""
+
     path: Path
     line: int
     col: int
     code: str
     message: str
+    pixel: bool = False
 
 
 @dataclass(frozen=True)
@@ -120,6 +124,8 @@ def format_problem(problem: Problem, root: Path) -> str:
         shown = problem.path.relative_to(root).as_posix()
     except ValueError:
         shown = str(problem.path)
+    if problem.pixel:
+        return f"{shown}:{problem.col},{problem.line}: {problem.code} {problem.message}"
     if problem.line == 0:
         return f"{shown}: {problem.code} {problem.message}"
     return f"{shown}:{problem.line}:{problem.col}: {problem.code} {problem.message}"

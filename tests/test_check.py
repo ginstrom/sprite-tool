@@ -277,3 +277,96 @@ def test_sprite_without_animations_has_no_w002(project):
 def test_frame_used_by_any_animation_is_not_w002(project):
     anims = '\n[anim.a]\nframes = ["idle_0", "spare"]\nms = 100\n\n[anim.b]\nframes = ["extra"]\nms = 100\n'
     assert run_text(project, HERO + SPARE + anims) == []
+
+
+# --- PNG checks ---------------------------------------------------------------
+
+BLACK = (0, 0, 0, 255)
+BLUE = (0, 0, 255, 255)
+CLEAR = (0, 0, 0, 0)
+
+
+def write_png(path: Path, size=(5, 4), fill=CLEAR, **pixels) -> Path:
+    """Write an RGBA PNG; `pixels` maps names like `x3y1` to colours."""
+    image = Image.new("RGBA", size, fill)
+    for name, colour in pixels.items():
+        x, y = name[1:].split("y")
+        image.putpixel((int(x), int(y)), colour)
+    image.save(path)
+    return path
+
+
+def check_png(project, path, canvas="unit"):
+    return check.check_png(project, path, project.canvases[canvas])
+
+
+def test_png_in_palette_colours_at_the_canvas_size_is_clean(project):
+    path = write_png(project.root / "hero.png", x0y0=BLACK, x4y3=BLUE)
+    assert check_png(project, path) == []
+
+
+def test_png_of_the_wrong_size_is_e301(project):
+    path = write_png(project.root / "hero.png", size=(4, 5))
+    assert lines(project, check_png(project, path)) == [
+        "hero.png: E301 image is 4x5, canvas 'unit' is 5x4"
+    ]
+
+
+def test_off_palette_pixel_is_e302_at_x_y(project):
+    path = write_png(project.root / "hero.png", x3y1=(255, 0, 255, 255))
+    assert lines(project, check_png(project, path)) == [
+        "hero.png:3,1: E302 colour #ff00ff is not in the palette"
+    ]
+
+
+def test_off_palette_pixel_at_the_origin_keeps_its_position(project):
+    path = write_png(project.root / "hero.png", x0y0=(1, 2, 3, 255))
+    assert lines(project, check_png(project, path)) == [
+        "hero.png:0,0: E302 colour #010203 is not in the palette"
+    ]
+
+
+def test_alpha_zero_pixel_is_transparent_whatever_its_rgb(project):
+    path = write_png(project.root / "hero.png", fill=(255, 0, 255, 0), x1y1=(9, 9, 9, 0))
+    assert check_png(project, path) == []
+
+
+def test_palette_colour_with_another_alpha_is_e302(project):
+    path = write_png(project.root / "hero.png", x2y2=(0, 0, 255, 128))
+    assert lines(project, check_png(project, path)) == [
+        "hero.png:2,2: E302 colour #0000ff80 is not in the palette"
+    ]
+
+
+def test_png_without_an_alpha_channel_is_read_as_opaque(project):
+    path = project.root / "hero.png"
+    Image.new("RGB", (5, 4), (0, 0, 255)).save(path)
+    assert check_png(project, path) == []
+
+
+def test_wrong_size_and_off_palette_pixels_are_both_reported(project):
+    path = write_png(project.root / "hero.png", size=(2, 2), x1y0=(255, 0, 255, 255))
+    assert [problem.code for problem in check_png(project, path)] == ["E301", "E302"]
+
+
+def test_e302_is_capped_at_ten_per_file_then_a_count(project):
+    path = write_png(project.root / "hero.png", fill=(255, 0, 255, 255))
+    problems = check_png(project, path)
+    assert [problem.code for problem in problems] == ["E302"] * 11
+    assert lines(project, problems[:6]) == [
+        f"hero.png:{x},{y}: E302 colour #ff00ff is not in the palette"
+        for x, y in [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (0, 1)]
+    ]
+    assert lines(project, problems[10:]) == ["hero.png: E302 10 more pixels not in the palette"]
+
+
+def test_file_that_is_not_an_image_is_e001(project):
+    path = project.root / "hero.png"
+    path.write_text("not a png", encoding="utf-8")
+    problems = check_png(project, path)
+    assert positions(problems) == [(0, 0, "E001")]
+    assert problems[0].message.startswith("cannot read image")
+
+
+def test_missing_png_is_e001(project):
+    assert positions(check_png(project, project.root / "nope.png")) == [(0, 0, "E001")]
