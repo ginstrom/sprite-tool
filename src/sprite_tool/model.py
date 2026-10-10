@@ -118,6 +118,12 @@ class Project:
     exports: tuple[ExportTarget, ...]
 
 
+def hex_colour(rgba: tuple[int, int, int, int]) -> str:
+    """`#rrggbb`, or `#rrggbbaa` when the colour is not opaque."""
+    digits = "".join(f"{channel:02x}" for channel in rgba)
+    return "#" + (digits[:6] if rgba[3] == 255 else digits)
+
+
 def format_problem(problem: Problem, root: Path) -> str:
     """One output line for a problem; paths under `root` are shown relative to it."""
     try:

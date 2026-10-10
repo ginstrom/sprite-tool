@@ -11,7 +11,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from .model import Canvas, Frame, Problem, Project, Sprite
+from .model import Canvas, Frame, Problem, Project, Sprite, hex_colour
 
 TRANSPARENT = "."
 MAX_E201_PER_FRAME = 10
@@ -53,14 +53,9 @@ def _shared_colours(project: Project) -> list[Problem]:
     problems = []
     for rgba, keys in keys_by_colour.items():
         if len(keys) > 1:
-            message = f"palette keys {_quoted(keys, 'and')} share the colour {_hex(rgba)}"
+            message = f"palette keys {_quoted(keys, 'and')} share the colour {hex_colour(rgba)}"
             problems.append(Problem(project.palette_path, 0, 0, "W001", message))
     return problems
-
-
-def _hex(rgba: tuple[int, int, int, int]) -> str:
-    digits = "".join(f"{channel:02x}" for channel in rgba)
-    return "#" + (digits[:6] if rgba[3] == 255 else digits)
 
 
 def _duplicate_ids(project: Project, sprites: Sequence[Sprite]) -> list[Problem]:
@@ -190,7 +185,7 @@ def check_png(project: Project, path: Path, canvas: Canvas) -> list[Problem]:
     ]
     for index, rgba in off_palette[:MAX_E302_PER_FILE]:
         y, x = divmod(index, image.width)
-        problems.append(Problem(path, y, x, "E302", f"colour {_hex(rgba)} is not in the palette", pixel=True))
+        problems.append(Problem(path, y, x, "E302", f"colour {hex_colour(rgba)} is not in the palette", pixel=True))
     extra = len(off_palette) - MAX_E302_PER_FILE
     if extra > 0:
         noun = "pixel" if extra == 1 else "pixels"

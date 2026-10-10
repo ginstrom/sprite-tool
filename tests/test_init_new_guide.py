@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import write_project
 from sprite_tool.cli import main
 from sprite_tool.project import load
 
@@ -263,3 +264,128 @@ def test_new_outside_a_project_exits_2(empty, capsys):
     assert captured.out == ""
     assert "sprite-tool.toml" in captured.err
     assert files(empty) == {}
+
+
+# --- guide --------------------------------------------------------------------
+
+
+def guide(root: Path, capsys) -> str:
+    assert main(["guide", "--project", str(root)]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    return captured.out
+
+
+def test_a13_demo_guide_is_short_and_lists_the_palette_and_canvas_classes(capsys):
+    text = guide(DEMO, capsys)
+    lines = text.splitlines()
+    assert len(lines) < 60
+    assert max(len(line) for line in lines) <= 100
+    assert text.isascii()
+
+    project, _ = load(DEMO)
+    assert len(project.palette) == 16
+    for color in project.palette.values():
+        red, green, blue, _ = color.rgba
+        assert f"{color.key} #{red:02x}{green:02x}{blue:02x} {color.name}" in text
+    assert "unit  32x32  anchor 16,32  display scale 2  outline k, grounded" in lines
+    assert "tile  16x16  anchor 0,0    display scale 4  no rules" in lines
+
+
+def test_guide_prints_exactly_guide_text(capsys):
+    from sprite_tool.guide import guide_text
+
+    project, _ = load(DEMO)
+    text = guide_text(project)
+    assert guide(DEMO, capsys) == text
+    assert text.endswith("\n") and not text.endswith("\n\n")
+    assert all(line == line.rstrip() for line in text.splitlines())
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "'.' is transparent",
+        "from =",
+        "rows =",
+        "shift =",
+        "flip =",
+        "in this order",
+        "[anim.",
+        "ms =",
+        "[variants.",
+        "swap =",
+        "outline = false",
+        "grounded = false",
+        "count from 0",
+        "sprite new <id> --canvas <class>",
+        "sprite check",
+        "sprite preview <id> --grid",
+        "sprite build",
+    ],
+)
+def test_guide_covers_the_format_and_the_workflow(capsys, phrase):
+    assert phrase in guide(DEMO, capsys)
+
+
+def test_guide_example_is_a_valid_sprite_file_for_the_demo(tmp_path, capsys):
+    """The example in the guide must not teach something `check` rejects."""
+    import shutil
+
+    from sprite_tool.guide import EXAMPLE
+
+    root = tmp_path / "demo"
+    shutil.copytree(DEMO, root, ignore=shutil.ignore_patterns("out", ".preview"))
+    config = root / "sprite-tool.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8") + '\n[canvas.icon]\nsize = [6, 4]\nanchor = [0, 0]\n', encoding="utf-8"
+    )
+    (root / "gem.sprite.toml").write_text(EXAMPLE.replace('canvas = "unit"', 'canvas = "icon"'), encoding="utf-8")
+    assert EXAMPLE in guide(root, capsys)
+
+    assert main(["check", "--project", str(root)]) == 0
+    assert capsys.readouterr().out == "ok: 6 sprites, 10 frames\n"
+
+
+def test_guide_reflects_the_project(tmp_path, capsys):
+    config = """\
+version = 1
+
+[canvas.boss]
+size = [48, 64]
+anchor = [24, 64]
+outline = ["k", "w"]
+
+[canvas.fx]
+size = [8, 8]
+anchor = [4, 4]
+display_scale = 3
+grounded = true
+"""
+    palette = '[colors]\nk = { hex = "#1a1c2c", name = "outline" }\nw = "#f4f4f4"\ng = "#00ff0080"\n'
+    root = write_project(tmp_path / "p", config, palette)
+    lines = guide(root, capsys).splitlines()
+
+    assert "boss  48x64  anchor 24,64  display scale 1  outline k w" in lines
+    assert "fx    8x8    anchor 4,4    display scale 3  grounded" in lines
+    legend = " ".join(" ".join(lines).split())
+    assert "k #1a1c2c outline" in legend
+    assert "w #f4f4f4" in legend
+    assert "g #00ff0080" in legend
+
+
+def test_guide_with_a_bad_palette_reports_it_and_exits_1(tmp_path, capsys):
+    root = write_project(tmp_path / "p", palette='[colors]\nab = "#000000"\n')
+    assert main(["guide", "--project", str(root)]) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith("palette.toml:2:1: E002 ")
+    assert out[-1] == "1 error, 0 warnings in 1 file"
+    assert len(out) == 2
+
+
+def test_guide_outside_a_project_exits_2(empty, capsys):
+    assert main(["guide"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("error: ")
+    assert "sprite-tool.toml" in captured.err

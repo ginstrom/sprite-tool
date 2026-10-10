@@ -11,6 +11,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import check, manifest, render, spritefile
+from . import guide as guide_module
 from . import project as project_module
 from .export import EXPORTERS
 from .model import Problem, Project, Sprite, format_problem
@@ -123,6 +124,14 @@ def _init(args: argparse.Namespace) -> int:
     except OSError as exc:
         return _usage_error(f"cannot write project: {exc}")
     print(f"created {root.as_posix()} ({count(len(targets), 'file')})")
+    return EXIT_OK
+
+
+def _guide(args: argparse.Namespace) -> int:
+    project, problems = load_project(args)
+    if report(problems, project.root):
+        return EXIT_CHECK_FAILED
+    print(guide_module.guide_text(project), end="")
     return EXIT_OK
 
 
@@ -248,7 +257,7 @@ def _build(args: argparse.Namespace) -> int:
 # One handler per subcommand. Each takes the parsed arguments and returns the exit code.
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "init": _init,
-    "guide": _not_implemented,
+    "guide": _guide,
     "new": _new,
     "check": _check,
     "preview": _not_implemented,
