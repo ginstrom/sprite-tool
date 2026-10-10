@@ -355,3 +355,181 @@ def test_unreadable_file_is_e001(project):
 
     assert sprites == []
     assert [(problem.path, problem.code) for problem in problems] == [(path, "E001")]
+
+
+# --- derived frames -------------------------------------------------------
+
+# idle_0 opens on line 4; `[frames.next]` is on line 10.
+BASE = TINY.replace(".kk.\nkwwk\nkbbk", "k...\nkw..\nkbw.") + "\n[frames.next]\n"
+
+
+def derived(project, body, text=BASE):
+    return load_text(project, text + body)
+
+
+def test_from_with_rows_equals_the_hand_written_grid(project):
+    """A4, at the grid level."""
+    text = BASE.replace("\n[frames.next]", 'full = """\nk...\nkbb.\nkbw.\n"""\n\n[frames.next]')
+    (sprite,), problems = derived(project, 'from = "idle_0"\nrows = { 1 = "kbb." }\n', text)
+
+    assert problems == []
+    assert frame_rows(sprite, "next") == frame_rows(sprite, "full") == ("k...", "kbb.", "kbw.")
+
+
+def test_derived_frame_is_not_literal_and_points_at_its_rows_key(project):
+    (sprite,), _ = derived(project, 'from = "idle_0"\nrows = { 1 = "kbb." }\n')
+    frame = sprite.frames[1]
+    assert (frame.name, frame.literal, frame.line) == ("next", False, 12)
+
+
+def test_derived_frame_without_rows_points_at_its_table_header(project):
+    (sprite,), _ = derived(project, 'from = "idle_0"\nflip = true\n')
+    assert (sprite.frames[1].literal, sprite.frames[1].line) == (False, 10)
+
+
+def test_plain_copy_has_the_parent_rows(project):
+    (sprite,), problems = derived(project, 'from = "idle_0"\n')
+    assert problems == []
+    assert frame_rows(sprite, "next") == ("k...", "kw..", "kbw.")
+
+
+@pytest.mark.parametrize(
+    "shift, expected",
+    [
+        ("[1, 0]", (".k..", ".kw.", ".kbw")),
+        ("[2, 0]", ("..k.", "..kw", "..kb")),
+        ("[-1, 0]", ("....", "w...", "bw..")),
+        ("[0, 1]", ("....", "k...", "kw..")),
+        ("[0, -2]", ("kbw.", "....", "....")),
+        ("[1, -1]", (".kw.", ".kbw", "....")),
+        ("[9, 0]", ("....", "....", "....")),
+        ("[0, -9]", ("....", "....", "....")),
+        ("[0, 0]", ("k...", "kw..", "kbw.")),
+    ],
+)
+def test_shift_moves_pixels_and_drops_those_leaving_the_canvas(project, shift, expected):
+    (sprite,), problems = derived(project, f'from = "idle_0"\nshift = {shift}\n')
+    assert problems == []
+    assert frame_rows(sprite, "next") == expected
+
+
+def test_flip_mirrors_horizontally(project):
+    (sprite,), _ = derived(project, 'from = "idle_0"\nflip = true\n')
+    assert frame_rows(sprite, "next") == ("...k", "..wk", ".wbk")
+
+
+def test_rows_then_shift_then_flip(project):
+    # rows:  k... / rrrr / kbw.    shift [1, 0]:  .k.. / .rrr / .kbw    flip:  ..k. / rrr. / wbk.
+    (sprite,), problems = derived(project, 'flip = true\nshift = [1, 0]\nrows = { 1 = "rrrr" }\nfrom = "idle_0"\n')
+    assert problems == []
+    assert frame_rows(sprite, "next") == ("..k.", "rrr.", "wbk.")
+
+
+def test_chain_of_two_derived_frames(project):
+    body = 'from = "idle_0"\nshift = [1, 0]\n\n[frames.last]\nfrom = "next"\nrows = { 0 = "rrrr" }\nflip = true\n'
+    (sprite,), problems = derived(project, body)
+
+    assert problems == []
+    assert [frame.name for frame in sprite.frames] == ["idle_0", "next", "last"]
+    assert frame_rows(sprite, "last") == ("rrrr", ".wk.", "wbk.")
+
+
+def test_derived_frame_may_come_before_its_parent(project):
+    text = 'canvas = "tiny"\n\n[frames.first]\nfrom = "second"\nflip = true\n\n[frames]\nsecond = """\nk...\n....\n....\n"""\n'
+    (sprite,), problems = load_text(project, text)
+
+    assert problems == []
+    assert [frame.name for frame in sprite.frames] == ["first", "second"]
+    assert frame_rows(sprite, "first") == ("...k", "....", "....")
+
+
+def test_inline_table_frame_is_reported_at_its_own_line(project):
+    text = TINY + 'next = { from = "idle_0", rows = { 1 = "k??k" } }\n'
+    (sprite,), problems = load_text(project, text)
+
+    assert positions(problems) == [(9, 1, "E104"), (9, 1, "E104")]
+    assert [frame.name for frame in sprite.frames] == ["idle_0"]
+
+
+# --- E105 and other derived frame problems ---------------------------------
+
+
+def test_from_naming_a_missing_frame_is_e105(project):
+    (sprite,), problems = derived(project, "flip = true\nfrom = \"idle_9\"\n")
+
+    assert positions(problems) == [(12, 1, "E105")]
+    assert "'next'" in problems[0].message and "'idle_9'" in problems[0].message
+    assert [frame.name for frame in sprite.frames] == ["idle_0"]
+
+
+@pytest.mark.parametrize("index", ["3", "-1", "x", "1.5"])
+def test_bad_rows_index_is_e105(project, index):
+    (sprite,), problems = derived(project, f'from = "idle_0"\nrows = {{ "{index}" = "kbb." }}\n')
+
+    assert positions(problems) == [(12, 1, "E105")]
+    assert "'next'" in problems[0].message
+    assert [frame.name for frame in sprite.frames] == ["idle_0"]
+
+
+def test_from_cycle_is_e105_once_at_its_first_frame(project):
+    text = (
+        'canvas = "tiny"\n\n[frames.a]\nfrom = "b"\n\n[frames.b]\nfrom = "c"\n\n[frames.c]\nfrom = "a"\n'
+        '\n[frames]\nok = """\nk...\n....\n....\n"""\n'
+    )
+    (sprite,), problems = load_text(project, text)
+
+    assert positions(problems) == [(4, 1, "E105")]
+    assert "a -> b -> c -> a" in problems[0].message
+    assert [frame.name for frame in sprite.frames] == ["ok"]
+
+
+def test_frame_derived_from_itself_is_e105(project):
+    _, problems = derived(project, 'from = "next"\n')
+    assert positions(problems) == [(11, 1, "E105")]
+
+
+def test_frame_leading_into_a_cycle_is_dropped_without_its_own_problem(project):
+    body = 'from = "a"\n\n[frames.a]\nfrom = "b"\n\n[frames.b]\nfrom = "a"\n'
+    (sprite,), problems = derived(project, body)
+
+    assert positions(problems) == [(14, 1, "E105")]
+    assert [frame.name for frame in sprite.frames] == ["idle_0"]
+
+
+def test_frame_derived_from_a_failed_frame_is_dropped_silently(project):
+    text = BASE.replace("kw..", "k?..").replace("\n[frames.next]", 'ok = """\nk...\n....\n....\n"""\n\n[frames.next]')
+    (sprite,), problems = derived(project, 'from = "idle_0"\n', text)
+
+    assert positions(problems) == [(6, 2, "E104")]
+    assert [frame.name for frame in sprite.frames] == ["ok"]
+
+
+def test_replacement_row_problems_are_reported_at_the_rows_key(project):
+    (sprite,), problems = derived(project, 'from = "idle_0"\nrows = { 0 = "kbb", 2 = "k?w." }\n')
+
+    assert positions(problems) == [(12, 1, "E103"), (12, 1, "E104")]
+    assert "'next'" in problems[0].message and "row 0" in problems[0].message
+    assert problems[1].message == "unknown palette key '?' in frame 'next' row 2"
+    assert [frame.name for frame in sprite.frames] == ["idle_0"]
+
+
+@pytest.mark.parametrize(
+    "body, line",
+    [
+        ("flip = true\n", 10),
+        ("from = 3\n", 11),
+        ('from = "idle_0"\nrows = "kbb."\n', 12),
+        ('from = "idle_0"\nrows = { 1 = 7 }\n', 12),
+        ('from = "idle_0"\nshift = [1]\n', 12),
+        ('from = "idle_0"\nshift = [1, 0.5]\n', 12),
+        ('from = "idle_0"\nshift = [true, 0]\n', 12),
+        ('from = "idle_0"\nflip = "yes"\n', 12),
+        ('from = "idle_0"\nrotate = 90\n', 12),
+    ],
+)
+def test_wrongly_typed_or_unknown_derived_field_is_e001(project, body, line):
+    (sprite,), problems = derived(project, body)
+
+    assert positions(problems) == [(line, 1, "E001")]
+    assert "'next'" in problems[0].message
+    assert [frame.name for frame in sprite.frames] == ["idle_0"]
