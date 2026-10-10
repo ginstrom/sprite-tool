@@ -17,7 +17,6 @@ INVOCATIONS = {
     "new": ["new", "warrior", "--canvas", "unit", "--dir", "units", "--project", "p"],
     "preview": ["preview", "warrior", "goblin", "--scale", "8", "--grid", "--on", "grass", "--sheet", "--project", "p"],
     "preview all": ["preview"],
-    "build": ["build", "--check", "--adopt", "--project", "p"],
     "import": ["import", "hero.png", "--canvas", "unit", "--id", "hero", "--scale", "4", "--snap", "--project", "p"],
 }
 

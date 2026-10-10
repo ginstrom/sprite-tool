@@ -7,8 +7,9 @@ import sys
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
-from . import check, spritefile
+from . import check, manifest, render, spritefile
 from . import project as project_module
+from .export import EXPORTERS
 from .model import Problem, Project, Sprite, format_problem
 from .project import CONFIG_NAME, ConfigError
 
@@ -127,6 +128,35 @@ def _check(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _build(args: argparse.Namespace) -> int:
+    project, sprites, problems = load_checked(args)
+    for target in project.exports:
+        if target.type not in EXPORTERS:
+            raise ConfigError(f"export target type {target.type!r} is not available in this version")
+    if any(_is_error(problem) for problem in problems):
+        report(problems, project.root)
+        return EXIT_CHECK_FAILED
+
+    # Nothing is written until every directory has passed its checks.
+    images = render.render_all(sprites, project.palette)
+    plans = manifest.plan(
+        [(target, EXPORTERS[target.type](sprites, images, target)) for target in project.exports]
+    )
+    if args.check:
+        problems += manifest.compare(plans)
+    elif not args.adopt:
+        manifest.check_ownership(plans)
+
+    if report(problems, project.root):
+        return EXIT_CHECK_FAILED
+    if not args.check:
+        manifest.apply(plans)
+    frames = sum(len(sprite.frames) for sprite in sprites)
+    totals = f"{count(len(sprites), 'sprite')}, {count(frames, 'frame')}, {count(len(project.exports), 'target')}"
+    print(f"{'up to date' if args.check else 'built'}: {totals}")
+    return EXIT_OK
+
+
 # One handler per subcommand. Each takes the parsed arguments and returns the exit code.
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "init": _not_implemented,
@@ -134,7 +164,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "new": _not_implemented,
     "check": _check,
     "preview": _not_implemented,
-    "build": _not_implemented,
+    "build": _build,
     "import": _not_implemented,
 }
 
