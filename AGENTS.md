@@ -12,7 +12,10 @@ Everything runs through `uv`.
 
 - `uv sync` installs the package and the dev dependencies into `.venv/`.
 - `make test` runs `uv run pytest`.
-- `make check` runs every check required before a commit (currently the tests).
+- `make check` runs every check required before a commit: the tests, then
+  `sprite check` on `examples/demo`.
+- `make golden` rebuilds the demo and replaces `tests/golden/` with its output
+  (see Golden files).
 - `uv run pytest tests/test_project.py -k palette` runs a subset.
 - `uv run sprite --help` runs the tool from the checkout.
 
@@ -33,6 +36,23 @@ Everything runs through `uv`.
   version into generated files. Previews are exempt.
 - **Safe writes.** Export files are only created, overwritten or deleted
   through the manifest.
+
+## Golden files
+
+`tests/golden/{frames,phaser,godot}/` is the committed output of
+`sprite build` on `examples/demo`, manifests included. `tests/test_golden.py`
+fails when a fresh build of the demo differs from it by a byte.
+
+- When that test fails and the change to the output was not intended, fix the
+  code. Do not regenerate.
+- When the change is intended (new demo art, an exporter change), run
+  `make golden`, read `git diff tests/golden`, and commit it with the change
+  that caused it.
+- PNG bytes depend on the Pillow version, which is why the pin is to one minor
+  release. Changing the pin means running `make golden` and committing the
+  result in the same commit.
+- `examples/demo/out/` is where the demo builds to. It is ignored by git and
+  is not what the tests compare against.
 
 ## Layout
 
@@ -80,3 +100,6 @@ Everything runs through `uv`.
   `pixels` for tests that build sprites directly.
 - `examples/demo/`: a small complete project, used by tests as a fixture.
   Tests copy it to `tmp_path` before changing or building it.
+- `tests/test_golden.py`: the golden comparison, the two-build determinism
+  test, the audit that generated files hold no path, timestamp or version, and
+  the 200-sprite speed test.
