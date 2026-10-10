@@ -177,6 +177,27 @@ def test_flags_are_false_when_the_canvas_has_no_rule(project):
     assert sprite.grounded is False
 
 
+def test_a_sprite_is_built_by_default(project):
+    (sprite,), _ = load_text(project, TINY)
+    assert sprite.build is True
+
+
+def test_a25_build_false_is_read_and_passed_to_the_variants(project):
+    text = "build = false\n" + TINY + '\n[variants.red]\nswap = { b = "r" }\n'
+    sprites, problems = load_text(project, text)
+
+    assert problems == []
+    assert [(sprite.id, sprite.build) for sprite in sprites] == [("hero", False), ("hero_red", False)]
+
+
+def test_a25_build_of_the_wrong_type_is_e001_at_its_line_and_the_sprite_is_built(project):
+    (sprite,), problems = load_text(project, 'canvas = "tiny"\nbuild = "no"\n' + TINY.split("\n", 1)[1])
+
+    assert positions(problems) == [(2, 1, "E001")]
+    assert problems[0].message == "build must be true or false"
+    assert sprite.build is True
+
+
 # --- E001 -----------------------------------------------------------------
 
 

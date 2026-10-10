@@ -63,6 +63,7 @@ class Sprite:
     variant_of: the base sprite id for a variant, else None.
     auto_outline: the file says `outline = "auto"`; the frames already hold
     the outline the tool drew.
+    build: False for a sprite that is checked and previewed and never exported.
     """
 
     id: str
@@ -74,6 +75,7 @@ class Sprite:
     grounded: bool
     variant_of: str | None
     auto_outline: bool = False
+    build: bool = True
 
 
 @dataclass(frozen=True)

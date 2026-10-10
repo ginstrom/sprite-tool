@@ -254,8 +254,9 @@ def _build(args: argparse.Namespace) -> int:
         report(problems, project.root)
         return EXIT_CHECK_FAILED
 
-    # A sprite that is still blank has its warning and is not exported.
-    sprites = [sprite for sprite in sprites if not check.is_blank(sprite)]
+    # A sprite that is still blank has its warning and is not exported; nor is
+    # one that says `build = false`.
+    sprites = [sprite for sprite in sprites if sprite.build and not check.is_blank(sprite)]
     # Nothing is written until every directory has passed its checks.
     images = render.render_all(sprites, project.palette)
     plans = manifest.plan(

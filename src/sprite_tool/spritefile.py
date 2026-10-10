@@ -20,7 +20,7 @@ SUFFIX = ".sprite.toml"
 TRANSPARENT = "."
 MAX_E104_PER_FRAME = 10
 
-_TOP_LEVEL_KEYS = ("canvas", "frames", "anim", "variants", "outline", "grounded")
+_TOP_LEVEL_KEYS = ("canvas", "frames", "anim", "variants", "outline", "grounded", "build")
 _FRAME_KEYS = ("from", "rows", "runs", "shift", "flip")
 _ANIM_KEYS = ("frames", "ms", "loop")
 _VARIANT_KEYS = ("swap",)
@@ -234,6 +234,7 @@ class _Parser:
             return []
         outline, auto_outline = self._outline(data, canvas)
         grounded = self._flag(data, "grounded")
+        build = self._flag(data, "build")
         resolved = self._frames(data.get("frames"), canvas)
         anims = self._anims(data.get("anim", {}), resolved)
         swaps = self._variants(data.get("variants", {}))
@@ -255,6 +256,7 @@ class _Parser:
             grounded=canvas.grounded and grounded,
             variant_of=None,
             auto_outline=auto_outline,
+            build=build,
         )
         return [sprite, *(_variant(sprite, name, swap) for name, swap in swaps.items())]
 

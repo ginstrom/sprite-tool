@@ -471,3 +471,121 @@ def test_a_sprite_named_like_another_sprites_frame_file_stops_the_build(demo, ca
     out = capsys.readouterr().out
     assert "E003 sprite id 'warrior__idle_0' clashes with frame 'idle_0' of sprite 'warrior'" in out
     assert not (demo / "out").exists()
+
+
+# --- build = false ----------------------------------------------------------
+
+ALL_TARGETS = (
+    FRAMES
+    + '\n[[export]]\ntype = "phaser"\nout = "out/phaser"\nname = "atlas"\n'
+    + '\n[[export]]\ntype = "godot"\nout = "out/godot"\nname = "atlas"\nres_path = "res://sprites"\n'
+)
+
+
+def add_scout(root: Path, head: str = "build = false\n") -> Path:
+    """Add `scout`, a copy of the goblin with a `pale` variant, with `head` above it."""
+    goblin = (root / "units" / "goblin.sprite.toml").read_text(encoding="utf-8")
+    path = root / "units" / "scout.sprite.toml"
+    path.write_text(f'{head}{goblin}\n[variants.pale]\nswap = {{ G = "g" }}\n', encoding="utf-8")
+    return path
+
+
+def test_a25_a_sprite_with_build_false_is_counted_by_check(demo, capsys):
+    add_scout(demo)
+
+    assert main(["check", "--project", str(demo)]) == 0
+    assert capsys.readouterr().out == "ok: 6 sprites, 8 frames\n"
+
+
+def test_a25_a_sprite_with_build_false_is_previewed(demo, capsys):
+    add_scout(demo)
+
+    assert main(["preview", "scout", "--project", str(demo)]) == 0
+    (written,) = capsys.readouterr().out.splitlines()
+    assert "scout" in written
+    assert list((demo / ".preview").iterdir()) != []
+
+
+def test_a25_a_sprite_with_build_false_and_its_variant_are_in_no_target_and_no_index(demo, capsys):
+    set_exports(demo, ALL_TARGETS)
+    add_scout(demo)
+
+    assert run(demo) == 0
+
+    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 3 targets\n"
+    out = demo / "out"
+    assert [name for name in tree(out) if Path(name).name.startswith("scout")] == []
+    assert sorted(tree(out / "frames")) == sorted(DEMO_FILES)
+    index = json.loads((out / "godot" / "atlas.json").read_text(encoding="utf-8"))
+    assert sorted(index) == ["goblin", "ground_light", "warrior", "warrior_red"]
+    atlas = json.loads((out / "phaser" / "atlas.json").read_text(encoding="utf-8"))
+    assert [name for name in atlas["frames"] if name.startswith("scout")] == []
+    anims = (out / "phaser" / "atlas.anims.json").read_text(encoding="utf-8")
+    assert "scout" not in anims
+
+
+def test_a25_build_check_does_not_count_a_sprite_with_build_false(demo, capsys):
+    add_scout(demo)
+    run(demo)
+    capsys.readouterr()
+
+    assert run(demo, "--check") == 0
+    assert capsys.readouterr().out == "up to date: 4 sprites, 6 frames, 1 target\n"
+
+
+def test_a25_adding_build_false_removes_the_sprites_files_and_leaves_the_others(demo, capsys):
+    scout = add_scout(demo, head="")
+    run(demo)
+    out = demo / "out" / "frames"
+    assert {"scout.png", "scout_pale.png"} <= set(tree(out))
+    before = {name: (out / name).stat().st_mtime_ns for name in DEMO_FILES if name != MANIFEST_NAME}
+
+    scout.write_text("build = false\n" + scout.read_text(encoding="utf-8"), encoding="utf-8")
+    capsys.readouterr()
+    assert run(demo) == 0
+
+    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 1 target\n"
+    assert sorted(tree(out)) == sorted(DEMO_FILES)
+    assert {name: (out / name).stat().st_mtime_ns for name in before} == before
+    assert run(demo, "--check") == 0
+    assert capsys.readouterr().out == "up to date: 4 sprites, 6 frames, 1 target\n"
+
+
+def test_a25_build_check_reports_the_exported_files_of_a_sprite_that_now_says_build_false(demo, capsys):
+    scout = add_scout(demo, head="")
+    run(demo)
+    scout.write_text("build = false\n" + scout.read_text(encoding="utf-8"), encoding="utf-8")
+    capsys.readouterr()
+
+    assert run(demo, "--check") == 1
+    out = capsys.readouterr().out
+    assert "scout.png" in out and "scout_pale.png" in out
+    assert "goblin.png" not in out
+
+
+def test_a25_two_files_with_one_stem_are_e003_when_one_says_build_false(demo, capsys):
+    add_scout(demo)
+    (demo / "tiles" / "scout.sprite.toml").write_text(
+        (demo / "tiles" / "ground_light.sprite.toml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    assert run(demo) == 1
+    out = capsys.readouterr().out
+    assert "tiles/scout.sprite.toml: E003 duplicate sprite id 'scout', also in units/scout.sprite.toml" in out
+    assert not (demo / "out").exists()
+
+
+def test_a25_a_fault_in_a_sprite_with_build_false_fails_the_build_and_writes_nothing(demo, capsys):
+    edit(add_scout(demo), "kyyok", "kyy?k")
+
+    assert run(demo) == 1
+    out = capsys.readouterr().out
+    assert "units/scout.sprite.toml" in out and "E104" in out
+    assert not (demo / "out").exists()
+
+
+def test_a25_build_of_the_wrong_type_is_e001_at_the_build_line(demo, capsys):
+    add_scout(demo, head='# not built\nbuild = "no"\n')
+
+    assert run(demo) == 1
+    assert "units/scout.sprite.toml:2:1: E001 build must be true or false" in capsys.readouterr().out
