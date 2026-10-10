@@ -1,0 +1,15 @@
+{
+  "targets": {
+    "frames": [
+      "goblin.png",
+      "ground_light.png",
+      "warrior.png",
+      "warrior__idle_0.png",
+      "warrior__idle_1.png",
+      "warrior_red.png",
+      "warrior_red__idle_0.png",
+      "warrior_red__idle_1.png"
+    ]
+  },
+  "version": 1
+}

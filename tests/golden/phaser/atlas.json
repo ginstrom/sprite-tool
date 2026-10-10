@@ -1,0 +1,157 @@
+{
+  "frames": {
+    "goblin/main": {
+      "frame": {
+        "h": 32,
+        "w": 32,
+        "x": 1,
+        "y": 1
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 1.0
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 32,
+        "w": 32
+      },
+      "spriteSourceSize": {
+        "h": 32,
+        "w": 32,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
+    "ground_light/main": {
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 67,
+        "y": 34
+      },
+      "pivot": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 16,
+        "w": 16
+      },
+      "spriteSourceSize": {
+        "h": 16,
+        "w": 16,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
+    "warrior/idle_0": {
+      "frame": {
+        "h": 32,
+        "w": 32,
+        "x": 34,
+        "y": 1
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 1.0
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 32,
+        "w": 32
+      },
+      "spriteSourceSize": {
+        "h": 32,
+        "w": 32,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
+    "warrior/idle_1": {
+      "frame": {
+        "h": 32,
+        "w": 32,
+        "x": 67,
+        "y": 1
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 1.0
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 32,
+        "w": 32
+      },
+      "spriteSourceSize": {
+        "h": 32,
+        "w": 32,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
+    "warrior_red/idle_0": {
+      "frame": {
+        "h": 32,
+        "w": 32,
+        "x": 1,
+        "y": 34
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 1.0
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 32,
+        "w": 32
+      },
+      "spriteSourceSize": {
+        "h": 32,
+        "w": 32,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
+    "warrior_red/idle_1": {
+      "frame": {
+        "h": 32,
+        "w": 32,
+        "x": 34,
+        "y": 34
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 1.0
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 32,
+        "w": 32
+      },
+      "spriteSourceSize": {
+        "h": 32,
+        "w": 32,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    }
+  },
+  "meta": {
+    "app": "sprite-tool",
+    "image": "atlas.png",
+    "scale": "1",
+    "size": {
+      "h": 67,
+      "w": 128
+    }
+  }
+}

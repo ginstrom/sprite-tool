@@ -1,0 +1,10 @@
+{
+  "targets": {
+    "phaser:atlas": [
+      "atlas.anims.json",
+      "atlas.json",
+      "atlas.png"
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,18 @@
+[gd_resource type="SpriteFrames" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://sprites/atlas.png" id="1"]
+
+[sub_resource type="AtlasTexture" id="goblin_main"]
+atlas = ExtResource("1")
+region = Rect2(1, 1, 32, 32)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("goblin_main")
+}],
+"loop": true,
+"name": &"default",
+"speed": 1.0
+}]

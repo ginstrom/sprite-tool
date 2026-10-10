@@ -1,0 +1,13 @@
+{
+  "targets": {
+    "godot:atlas": [
+      "atlas.json",
+      "atlas.png",
+      "goblin.tres",
+      "ground_light.tres",
+      "warrior.tres",
+      "warrior_red.tres"
+    ]
+  },
+  "version": 1
+}

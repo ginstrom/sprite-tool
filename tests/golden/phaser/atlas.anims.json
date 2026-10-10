@@ -1,0 +1,36 @@
+{
+  "anims": [
+    {
+      "frames": [
+        {
+          "duration": 400,
+          "frame": "warrior/idle_0",
+          "key": "atlas"
+        },
+        {
+          "duration": 400,
+          "frame": "warrior/idle_1",
+          "key": "atlas"
+        }
+      ],
+      "key": "warrior/idle",
+      "repeat": -1
+    },
+    {
+      "frames": [
+        {
+          "duration": 400,
+          "frame": "warrior_red/idle_0",
+          "key": "atlas"
+        },
+        {
+          "duration": 400,
+          "frame": "warrior_red/idle_1",
+          "key": "atlas"
+        }
+      ],
+      "key": "warrior_red/idle",
+      "repeat": -1
+    }
+  ]
+}
