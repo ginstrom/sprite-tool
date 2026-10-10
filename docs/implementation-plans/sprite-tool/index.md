@@ -39,7 +39,7 @@ Every task file repeats the ones that apply to it.
 | 07 | [Godot export](07-godot-export.md) | `godot` target: sheet, `SpriteFrames` `.tres` per sprite, index JSON | 05 | pending |
 | 08 | [Preview](08-preview.md) | `sprite preview` for sprites, `--grid`, `--on`, contact sheet | 03, 04 | done |
 | 09 | [`init`, `new` and `guide`](09-init-new-guide.md) | Project scaffolding, blank sprite scaffolding, agent reference text | 05 | done |
-| 10 | [Import](10-import.md) | `sprite import` with `--scale` and `--snap` | 03, 04 | pending |
+| 10 | [Import](10-import.md) | `sprite import` with `--scale` and `--snap` | 03, 04 | done |
 | 11 | [Golden files, documentation and acceptance](11-golden-docs-acceptance.md) | Golden output, determinism and speed tests, README and AGENTS.md, manual acceptance | 06, 07, 08, 09, 10 | pending |
 
 ## Execution order
@@ -160,6 +160,40 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Step 10, 2026-10-10, commits `6064243`, `94c086e`, and the commit that adds this entry
+
+**Evidence**
+
+- `make test`: 821 passed (762 before the step; 31 new in `tests/test_importer.py`, 29 in `tests/test_import.py`; 1 stub case for `import` removed from `tests/test_cli.py`). `make check`: same.
+- A10 is `test_a10_an_imported_png_renders_back_to_the_identical_image`: the demo goblin is rendered, imported as `goblin_copy`, loaded and rendered again; the pixels are equal and stdout is exactly `goblin_copy.sprite.toml`.
+- Every case in the task file's verification list has a test, at the command (`tests/test_import.py`) and, for mapping, placement, `--scale` and `--snap`, at the function (`tests/test_importer.py`).
+- Five deliberate faults in `importer.py` (centre rounding, the alpha threshold, which key wins a shared colour, the row offset, the scale repeat) each failed at least one test.
+- Manual check, on a copy of the demo: importing `out/frames/goblin.png` gave a grid identical to `units/goblin.sprite.toml`. A 16x16 placeholder in two off-palette colours with `--scale 2` printed ten E302 lines and a count and exited 1; with `--snap` it printed `#28283c -> k (#1a1c2c) x32`, `#c83c5a -> r (#b13e53) x48` and the path, and `sprite check` on the result printed `ok: 1 sprite, 1 frame`. A second import exited 2 with `error: ph.sprite.toml already exists`.
+- `uv run sprite build --project examples/demo` still prints `built: 4 sprites, 6 frames, 2 targets`.
+
+**Names later steps need**
+
+- `importer.import_png(path, canvas, palette, *, scale=1, snap=False)` and `importer.to_rows(image, canvas, palette, path, *, scale=1, snap=False)`, each returning `Imported(rows, problems, snapped)`. `rows` is empty when there is a problem. `importer.sprite_text(canvas_name, rows)` is the file text.
+- `check.off_palette_problems(path, pixels)` builds the E302 lines (ten, then a count) from `(x, y, colour)` tuples. It was the end of `check.check_png`, which now calls it; `check_png` behaves as before.
+- `cli._not_implemented` is gone, since no subcommand is a stub any more.
+
+**Choices the task file left open**
+
+- **`--scale` repeats keys, not pixels.** Colours are matched on the PNG as given and each key is then repeated, so E302 coordinates are those of the original file whatever the scale. The scaled size is what must fit: `image is 32x32 at --scale 2, canvas 'tile' is 16x16`.
+- **Placement is one rule.** The left edge is `anchor x - width // 2` and the top edge `anchor y - height`, each then moved to keep the image inside the canvas. An anchor of `[0, 0]` therefore gives top-left without a special case, and an anchor near an edge never pushes pixels off the canvas. With an odd width the extra column is to the right of the anchor.
+- **E301 and E302 are reported together** when a PNG is both too large and off-palette, as `sprite check` does. With `--snap`, a too-large PNG is E301 only.
+- **`--snap`.** Pixels that match exactly (alpha included) and alpha-0 pixels are left alone and not reported. Every other pixel is snapped: alpha below 128 becomes `.`, reported as `#b13e5364 -> . (transparent) x1`; otherwise the nearest key in RGB over every palette colour, the first in palette order on a tie. A source colour that is not opaque is printed as `#rrggbbaa`. Lines are sorted by the source colour's red, green, blue, alpha.
+- **Refusals (exit 2)** are those of `new`: a bad id, an unknown class, an existing `<id>.sprite.toml` in the project root, and an id already used by a sprite or variant elsewhere in the project. When the id came from the file stem the message ends `(use --id <id>)`. They are checked before the PNG is read.
+- **A PNG that is missing or cannot be read** is an E001 line and exit 1, as in `sprite check`, not exit 2.
+- **A bad palette** prints the palette problems and exits 1 without reading the PNG (P5).
+- **The printed path** is relative to the current directory, as for `new`. The file always goes to the project root; there is no `--dir`.
+
+**Notes**
+
+- `sprite guide` does not mention `import`. Its command list is the drawing loop (`new`, `check`, `preview`, `build`); step 11 can decide whether to add a line.
+- With more than ten off-palette pixels the count line is printed before the pixel lines, because `cli.report` sorts problems with no position first. Step 03 recorded the same for `sprite check` on a PNG. Not changed here.
+- The `--scale` help text is `the PNG is enlarged N times; shrink it first`, which reads as if `--scale` shrinks. It was written in step 01 and is not changed here.
 
 ### Step 08, 2026-10-10, commits `fbd8ce6`, `0570db6`, and the commit that adds this entry
 

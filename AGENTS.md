@@ -67,6 +67,8 @@ Everything runs through `uv`.
   (`sprite_preview`, `on_tile`, `contact_sheet`). Layout sizes are named
   constants, which the tests use. Previews are written straight to
   `.preview/`, not through the manifest.
+- `src/sprite_tool/importer.py`: `import_png` and `to_rows`, a PNG to the grid
+  of a sprite file for `sprite import`, and `sprite_text`, the file it writes.
 - `src/sprite_tool/manifest.py`: the only code that creates, overwrites or
   deletes export files (`plan`, `check_ownership`, `apply`, `compare`), and
   `json_bytes`, the one JSON encoder for generated files.
