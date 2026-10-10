@@ -168,7 +168,7 @@ there.
 - `make test`: 642 passed (578 before the step; 32 new in `tests/test_manifest.py`, 5 in `tests/test_export_frames.py`, 28 in `tests/test_build.py`; 1 stub case for `build` removed from `tests/test_cli.py`). `make check`: same.
 - `uv run sprite build --project examples/demo` prints `built: 4 sprites, 6 frames, 1 target` and exits 0, twice; `--check` then prints `up to date: 4 sprites, 6 frames, 1 target`. `git status` shows no new files (`out/` is ignored).
 - A2 is `test_a2_palette_change_recolours_that_key_and_nothing_else`; the `frames` part of A5 is `test_a5_red_variant_is_the_base_with_its_colours_swapped`; A12 is `test_a12_deleted_sprite_is_cleaned_up_and_other_files_are_left`.
-- The unowned-file block, `--adopt`, the shared-directory conflict, "a failing check writes nothing" and "a second build rewrites no file" each have a test in `tests/test_build.py` and in `tests/test_manifest.py`.
+- The unowned-file block, `--adopt`, the shared-directory conflict and "a second build rewrites no file" each have a test in `tests/test_build.py` and in `tests/test_manifest.py`. "A failing check writes nothing" is tested in `tests/test_build.py`.
 
 **Names later steps need**
 
