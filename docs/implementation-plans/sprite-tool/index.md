@@ -31,7 +31,7 @@ Every task file repeats the ones that apply to it.
 | Step | Task | Outcome | Depends on | Status |
 |---|---|---|---|---|
 | 01 | [Scaffold, model and project loading](01-scaffold-model-project.md) | Installable package, `sprite` CLI skeleton with all subcommands declared, data model, config and palette loading | none | done |
-| 02 | [Sprite file parser](02-sprite-file-parser.md) | `*.sprite.toml` parsed into sprites with derived frames, variants and source positions | 01 | in progress |
+| 02 | [Sprite file parser](02-sprite-file-parser.md) | `*.sprite.toml` parsed into sprites with derived frames, variants and source positions | 01 | done |
 | 03 | [Checks, `check` command and demo project](03-checks-and-demo.md) | Style and PNG checks, working `sprite check`, `examples/demo/` sources | 02 | pending |
 | 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | pending |
 | 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | pending |
@@ -160,6 +160,33 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Step 02, 2026-10-10, commits `70102ca`, `8309e87`, `d19b22c`
+
+**Evidence**
+
+- `make test`: 243 passed (127 before the step, 116 new in `tests/test_spritefile.py`). `make check`: same.
+- Every code in the step's table (E001, E101, E102, E103, E104, E105, E107) has a test asserting line and column, including the worked example `units/warrior.sprite.toml:9:14: E104 unknown palette key 'x'`.
+- A4 at the grid level: `test_from_with_rows_equals_the_hand_written_grid`.
+- `test_bad_input_is_reported_and_never_raises` runs 20 malformed files through `load_all`.
+
+**Names later steps need**
+
+- `spritefile.discover(root) -> list[Path]` and `spritefile.load_all(project, paths=None) -> tuple[list[Sprite], list[Problem]]`, as in the task file. `spritefile.SUFFIX` is `".sprite.toml"` and `spritefile.TRANSPARENT` is `"."`.
+- Sprites come back sorted by id. Problems come back in file order and, within a file, in the order found; they are not sorted by line (step 03 sorts).
+- `Problem.path` and `Sprite.source` are the paths as passed in. `discover` returns absolute paths because `Project.root` is absolute.
+- Every problem from this module has line 1 or more and column 1 or more, except an unreadable file, which is E001 at line 0.
+
+**Choices the task file left open**
+
+- **A file with no resolved frame gives no sprite** (and no variants), so `Sprite.frames[0]` always exists. Such a file always has at least one problem. A file with no `[frames]` table, or an empty one, is E001.
+- **Message text.** E104 in a located grid is exactly `unknown palette key 'x'`, as in the design. Every other frame problem names the frame, and the row where relevant (`frame 'idle_0' row 3: 17 wide, expected 16`). E104 in a `rows` override or an unlocated grid adds ` in frame 'idle_1' row 5`. The E104 count line is `N more unknown palette keys in frame 'idle_0'`, at the frame's opening line, column 1.
+- **One E103 per row.** A row with trailing whitespace gets only the trailing-whitespace E103, even if its width is also wrong. Its other characters are still checked for E104.
+- **Positions.** Problems outside a grid (unknown fields, `from`, `shift`, animations, variants) are at the line of the key concerned, else the line of its table header, else line 1; column 1. Frames written as inline tables or with dotted keys are not located: an inline table is reported at its own line, a dotted key at line 1.
+- **Cycles.** A `from` cycle is one E105, at the `from` line of the cycle's first frame in file order, with the loop in the message (`a -> b -> a`). Frames that lead into a cycle are dropped without a problem.
+- **Derived frames.** A missing `from`, a non-integer `shift`, a non-boolean `flip` and an unknown field are E001 and drop the frame. A `rows` index must be a decimal integer from 0 to height minus 1.
+- **Animations.** `frames` must be a non-empty list of strings. An animation with any E001 or E105 is left out. Animation and variant names are not restricted.
+- **Variants.** `.` is not a palette key, so it is E107 as a swap source or target. An empty `swap` table is allowed.
 
 ### Step 01, 2026-10-10, commit `68cec6f`
 
