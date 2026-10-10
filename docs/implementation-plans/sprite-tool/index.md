@@ -40,7 +40,7 @@ Every task file repeats the ones that apply to it.
 | 08 | [Preview](08-preview.md) | `sprite preview` for sprites, `--grid`, `--on`, contact sheet | 03, 04 | done |
 | 09 | [`init`, `new` and `guide`](09-init-new-guide.md) | Project scaffolding, blank sprite scaffolding, agent reference text | 05 | done |
 | 10 | [Import](10-import.md) | `sprite import` with `--scale` and `--snap` | 03, 04 | done |
-| 11 | [Golden files, documentation and acceptance](11-golden-docs-acceptance.md) | Golden output, determinism and speed tests, README and AGENTS.md, manual acceptance | 06, 07, 08, 09, 10 | pending |
+| 11 | [Golden files, documentation and acceptance](11-golden-docs-acceptance.md) | Golden output, determinism and speed tests, README and AGENTS.md, manual acceptance | 06, 07, 08, 09, 10 | done |
 
 ## Execution order
 
@@ -160,6 +160,70 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Plan complete, 2026-10-10
+
+Every row in the task table is `done`. The overall completion criteria were run after step 11:
+
+- `make check` passes from a clean clone (`git clone`, `uv sync`, `make check`): 867 passed, then `ok: 4 sprites, 6 frames`.
+- A1 to A15 each have an automated test (listed under step 11). The in-engine halves of A6 and A7 are recorded under steps 06 and 11; both were run headless and neither was watched by a person.
+- `uv run sprite build --project examples/demo` twice leaves `git status` clean.
+- `uv tree --no-dev` shows `pillow v12.3.0` as the only runtime dependency; `uv.lock` is committed.
+
+### Step 11, 2026-10-10, commits `b0c03e1`, `4beed9b`, `c026a5f`, `18cd702`, `b16e3cd`, and the commit that adds this entry
+
+**Evidence**
+
+- `make test`: 867 passed (855 before the step; 9 new in `tests/test_golden.py`, 1 each in `tests/test_build.py`, `tests/test_cli.py` and `tests/test_init_new_guide.py`). `make check` runs the tests and then `uv run sprite check --project examples/demo`, which prints `ok: 4 sprites, 6 frames`.
+- `tests/golden/{frames,phaser,godot}/` holds 20 files (10 PNG, 10 text). `make golden` on an unchanged tree produces no diff.
+- With a path, a date and the version appended to one golden `.tres` and a stray PNG added, four of the golden tests failed.
+- **Q5: 200 sprites (200 frames, three targets) built in 0.096 s** in process on the author's laptop; the test bound is 5 s. The sprites are 200 copies of the demo goblin.
+- Clean clone: `git clone`, `uv sync`, `make check` passed; `make golden` and a build there left `git status` clean.
+
+**Acceptance criteria and their tests**
+
+| | Test |
+|---|---|
+| A1 | `test_a1_init_then_build_in_an_empty_directory` |
+| A2 | `test_a2_palette_change_recolours_that_key_and_nothing_else` |
+| A3 | `test_a3_three_problems_with_positions_then_the_summary` |
+| A4 | `test_a4_a_frame_derived_with_rows_renders_as_the_same_frame_written_in_full` (new, at the PNG level), `test_from_with_rows_equals_the_hand_written_grid` |
+| A5 | `test_a5_red_variant_is_the_base_with_its_colours_swapped`, `test_a5_red_variant_frame_differs_from_the_base`, `test_a5_the_red_variant_has_its_own_resource_with_recoloured_frames` |
+| A6 | structure: `tests/test_export_phaser.py`; in engine: step 06 below |
+| A7 | `test_a7_godot_loads_each_resource_as_sprite_frames`; in the game project: below |
+| A8 | `test_a8_two_copies_of_the_demo_build_to_identical_bytes`, `test_a8_a_second_build_in_place_changes_no_byte` |
+| A9 | `test_a9_preview_writes_one_png_and_prints_only_its_path` |
+| A10 | `test_a10_an_imported_png_renders_back_to_the_identical_image` |
+| A11 | `test_a11_png_reports_size_mismatch_and_off_palette_pixels` |
+| A12 | `test_a12_deleted_sprite_is_cleaned_up_and_other_files_are_left` |
+| A13 | `test_a13_demo_guide_is_short_and_lists_the_palette_and_canvas_classes` |
+| A14 | `test_a14_sixteen_wide_row_in_a_32x32_sprite_is_e103`, `test_a14_unit_and_tile_are_in_one_sheet_at_their_own_sizes`, and one in each atlas exporter's tests |
+| A15 | `test_a15_on_writes_the_unit_on_the_tile`, `test_a15_unit_stands_on_the_tile_each_at_its_own_display_scale` |
+
+**Manual acceptance**
+
+1. **Phaser (A6).** The step 06 entry records the in-engine result: `pivot` is read and a frame's `duration` replaces the base frame time in Phaser 4.2.1. The README says no `setOrigin` call is needed.
+2. **Godot (A7).** Run in a scratch copy of fantasy-tactics (Godot 4.7.2) with the demo's `godot` target writing to its `assets/sprites` and `res_path = "res://assets/sprites"`. Godot ran headless with its home directory in the scratch area. **Nobody opened the editor window or watched the animation**; that is still worth doing once on the first real export.
+   - `godot --headless --editor --quit` imported the sheet and loaded the editor with no error. It added `atlas.png.import` and changed no generated file: `sprite build --check` afterwards printed `up to date: 4 sprites, 6 frames, 3 targets`.
+   - A script loaded `warrior.tres`: a `SpriteFrames` with one animation, `idle`, 2 frames, speed 2.5, looping; frame 0 an `AtlasTexture` with region `(34, 1, 32, 32)` on `res://assets/sprites/atlas.png` (128 x 67). In an `AnimatedSprite2D`, `play("idle")` gave frame changes 399 to 407 ms apart, alternating 1 and 0.
+   - **Saving from Godot does rewrite the file.** `ResourceSaver.save` of the loaded resource to another path dropped `load_steps=4` from the header, changed the external resource id from `"1"` to `"1_k7vgq"`, and wrote `"loop": 1` for `"loop": true`. Opening does not do this; saving would make `build --check` report the file as stale. The README says not to save generated `.tres` files from the editor.
+   - `~/play/fantasy-tactics` was not touched (`git status` clean).
+3. **Agent trial.** A fresh agent was given a copy of the demo, told to use only `sprite guide` and the tool's own output, and asked to add an `archer` unit with a two-frame `idle`. It ran `guide`, `--help`, `new archer --canvas unit --dir units`, `check`, `preview archer --grid` and `build`, drew the grid by hand, and passed `check` on the first attempt; `build` printed `built: 5 sprites, 8 frames, 3 targets`. It read no source, design or existing sprite file. The preview shows a recognisable archer with a blink as the second frame.
+   - What it had to guess: where sprite files go (it read the directory listing), whether frame names mean anything, whether a replacement row must be full width, and that diagonals do not count for the outline rule, which makes any part 1 or 2 pixels wide all outline. **The guide now says each of these** (50 lines for the demo, longest 97 characters).
+   - Noted and not changed: "default frame", `anchor` and `display scale` are not explained in the guide; `preview` without `--grid` or an id is not described; the guide does not list `init` or `import`.
+
+**Choices the task file left open**
+
+- **A second golden test compares a fresh build with `tests/golden/` file by file**, as well as the `build --check` test the task file asks for. `build --check` reads the manifest, so it would not notice a stray file in `tests/golden/`.
+- **`make golden` deletes `tests/golden/` before copying**, so a file that is no longer generated does not stay.
+- **The clean-output audit** checks text files for an absolute path, a date, a time, a run of nine or more digits and the package version, and PNGs for any chunk other than `IHDR`, `IDAT`, `IEND`.
+- **`import --scale` help text** now reads `enlarge the PNG N times before importing (default: 1)`. The old text said "shrink it first", which is the opposite of what the option does (step 10's note).
+- `sprite guide` still leaves out `import`; the README covers it.
+
+**Notes**
+
+- Golden PNG bytes depend on the Pillow minor version. `AGENTS.md` says a change to the pin means `make golden` in the same commit.
+- The Q5 test prints its time; run `uv run pytest tests/test_golden.py -k q5 -s` to see it.
 
 ### Step 07, 2026-10-10, commit `1e0cab9` and the commit that adds this entry
 
