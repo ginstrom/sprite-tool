@@ -193,6 +193,89 @@ def test_owned_files_are_overwritten_without_adopt(tmp_path):
     manifest.check_ownership(manifest.plan([(frames_target(tmp_path), {"goblin.png": b"G2"})]))
 
 
+# --- adopting by sprite id --------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name, sprite_id, expected",
+    [
+        ("warrior.png", "warrior", True),
+        ("warrior__idle_0.png", "warrior", True),
+        ("warrior.tres", "warrior", True),
+        ("warrior_red.png", "warrior", False),
+        ("warrior_red__idle_0.png", "warrior", False),
+        ("warrior_red.png", "warrior_red", True),
+        ("warrior_red__idle_0.png", "warrior_red", True),
+        ("warriors.png", "warrior", False),
+        ("atlas.png", "warrior", False),
+        ("atlas.json", "warrior", False),
+        ("sprites.json", "warrior", False),
+        ("sprites.json", "sprite", False),
+    ],
+)
+def test_a_file_belongs_to_the_id_before_its_first_dot_or_double_underscore(name, sprite_id, expected):
+    assert manifest.belongs_to(name, frozenset({sprite_id})) is expected
+
+
+def test_a_file_belongs_to_any_of_several_ids_and_to_none_of_no_ids():
+    assert manifest.belongs_to("goblin.png", frozenset({"warrior", "goblin"}))
+    assert not manifest.belongs_to("goblin.png", frozenset())
+
+
+def unowned_plans(out: Path, *names: str) -> list[manifest.Plan]:
+    """A plan for `names` in `out`, each of which is already there and unowned."""
+    for name in names:
+        (out / name).write_bytes(b"hand made")
+    return manifest.plan([(frames_target(out), {name: b"new" for name in names})])
+
+
+def test_ownership_passes_when_every_unowned_file_belongs_to_an_adopted_id(tmp_path):
+    plans = unowned_plans(tmp_path, "goblin.png", "warrior.png", "warrior__idle_0.png")
+    manifest.check_ownership(plans, frozenset({"warrior", "goblin"}))
+
+
+def test_ownership_names_the_one_file_no_adopted_id_covers(tmp_path):
+    plans = unowned_plans(tmp_path, "goblin.png", "warrior.png")
+    with pytest.raises(ConfigError) as excinfo:
+        manifest.check_ownership(plans, frozenset({"goblin"}))
+    assert str(excinfo.value) == (
+        f"{tmp_path / 'warrior.png'} already exists and was not written by sprite-tool"
+        " (use --adopt <id>... for those sprites, or --adopt for all)"
+    )
+
+
+def test_ownership_counts_only_the_files_no_adopted_id_covers(tmp_path):
+    plans = unowned_plans(tmp_path, "atlas.png", "goblin.png", "warrior.png", "warrior_red.png", "sprites.json")
+    with pytest.raises(ConfigError) as excinfo:
+        manifest.check_ownership(plans, frozenset({"warrior"}))
+    assert str(excinfo.value) == (
+        f"{tmp_path / 'atlas.png'} and 3 more already exist and were not written by sprite-tool"
+        " (use --adopt <id>... for those sprites, or --adopt for all)"
+    )
+
+
+def test_ownership_with_no_ids_adopts_nothing(tmp_path):
+    plans = unowned_plans(tmp_path, "goblin.png")
+    for adopt_ids in (None, frozenset()):
+        with pytest.raises(ConfigError, match="goblin.png already exists"):
+            manifest.check_ownership(plans, adopt_ids)
+
+
+def test_ownership_with_ids_is_checked_in_every_directory(tmp_path):
+    (tmp_path / "one").mkdir()
+    (tmp_path / "two").mkdir()
+    (tmp_path / "one" / "warrior.png").write_bytes(b"hand made")
+    (tmp_path / "two" / "goblin.png").write_bytes(b"hand made")
+    plans = manifest.plan(
+        [
+            (frames_target(tmp_path / "one"), {"warrior.png": b"W"}),
+            (frames_target(tmp_path / "two"), {"goblin.png": b"G"}),
+        ]
+    )
+    with pytest.raises(ConfigError, match="goblin.png already exists"):
+        manifest.check_ownership(plans, frozenset({"warrior"}))
+
+
 # --- shared directories -----------------------------------------------------
 
 

@@ -84,15 +84,26 @@ def plan(outputs: Sequence[tuple[ExportTarget, Mapping[str, bytes]]]) -> list[Pl
     return plans
 
 
-def check_ownership(plans: Sequence[Plan]) -> None:
-    """Raise `ConfigError` if a build would overwrite a file the tool did not write."""
+def belongs_to(name: str, ids: frozenset[str]) -> bool:
+    """Whether a generated file is one of these sprites' own: `warrior.png`,
+    `warrior__idle_0.png` and `warrior.tres` for `warrior`. A variant's files
+    (`warrior_red.png`) belong to the variant's id, and a shared file
+    (`atlas.png`) to no sprite."""
+    file_name = PurePosixPath(name).name
+    return file_name.split(".", 1)[0] in ids or file_name.split("__", 1)[0] in ids
+
+
+def check_ownership(plans: Sequence[Plan], adopt_ids: frozenset[str] | None = None) -> None:
+    """Raise `ConfigError` if a build would overwrite a file the tool did not
+    write, other than the files of the sprites in `adopt_ids`."""
+    ids = adopt_ids or frozenset()
     for item in plans:
-        unowned = item.unowned
-        if unowned:
-            more = f" and {len(unowned) - 1} more" if len(unowned) > 1 else ""
+        kept = [name for name in item.unowned if not belongs_to(name, ids)]
+        if kept:
+            found = f" and {len(kept) - 1} more already exist and were" if len(kept) > 1 else " already exists and was"
             raise ConfigError(
-                f"{item.directory / unowned[0]}{more} already exists and was not written by sprite-tool"
-                " (use --adopt to overwrite)"
+                f"{item.directory / kept[0]}{found} not written by sprite-tool"
+                " (use --adopt <id>... for those sprites, or --adopt for all)"
             )
 
 
