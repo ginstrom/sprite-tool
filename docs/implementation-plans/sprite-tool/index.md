@@ -31,7 +31,7 @@ Every task file repeats the ones that apply to it.
 | Step | Task | Outcome | Depends on | Status |
 |---|---|---|---|---|
 | 01 | [Scaffold, model and project loading](01-scaffold-model-project.md) | Installable package, `sprite` CLI skeleton with all subcommands declared, data model, config and palette loading | none | done |
-| 02 | [Sprite file parser](02-sprite-file-parser.md) | `*.sprite.toml` parsed into sprites with derived frames, variants and source positions | 01 | pending |
+| 02 | [Sprite file parser](02-sprite-file-parser.md) | `*.sprite.toml` parsed into sprites with derived frames, variants and source positions | 01 | in progress |
 | 03 | [Checks, `check` command and demo project](03-checks-and-demo.md) | Style and PNG checks, working `sprite check`, `examples/demo/` sources | 02 | pending |
 | 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | pending |
 | 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | pending |
