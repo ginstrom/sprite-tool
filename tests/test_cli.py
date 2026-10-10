@@ -38,7 +38,9 @@ def test_parsed_arguments():
     args = cli.build_parser().parse_args(["check", "x.png", "--canvas", "tile"])
     assert (args.paths, args.canvas) == (["x.png"], "tile")
     args = cli.build_parser().parse_args(["build"])
-    assert (args.check, args.adopt) == (False, False)
+    assert (args.check, args.adopt) == (False, None)
+    assert cli.build_parser().parse_args(["build", "--adopt"]).adopt == []
+    assert cli.build_parser().parse_args(["build", "--adopt", "a", "b", "--check"]).adopt == ["a", "b"]
     args = cli.build_parser().parse_args(["new", "orc", "--canvas", "unit"])
     assert (args.id, args.canvas, args.dir) == ("orc", "unit", None)
     assert cli.build_parser().parse_args(["init"]).dir == "."

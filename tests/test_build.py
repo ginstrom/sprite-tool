@@ -294,8 +294,10 @@ def test_an_unowned_file_blocks_the_build(demo, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err.startswith("error: ")
-    assert "goblin.png" in captured.err
-    assert captured.err.count("\n") == 1
+    assert captured.err == (
+        f"error: {out / 'goblin.png'} already exists and was not written by sprite-tool"
+        " (use --adopt <id>... for those sprites, or --adopt for all)\n"
+    )
     assert tree(out) == {"goblin.png": b"hand made"}
 
 
@@ -306,11 +308,181 @@ def test_adopt_takes_ownership_of_existing_files(demo, capsys):
 
     assert run(demo, "--adopt") == 0
 
-    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 1 target\n"
+    assert capsys.readouterr().out == f"adopted {out / 'goblin.png'}\nbuilt: 4 sprites, 6 frames, 1 target\n"
     assert image(out / "goblin.png").size == (32, 32)
     manifest = json.loads((out / MANIFEST_NAME).read_text(encoding="utf-8"))
     assert "goblin.png" in manifest["targets"]["frames"]
     assert run(demo) == 0
+
+
+def hand_made(root: Path, *names: str) -> Path:
+    """Put files the tool did not write in `out/frames`, and return that directory."""
+    out = root / "out" / "frames"
+    out.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (out / name).write_bytes(b"hand made")
+    return out
+
+
+def test_a23_adopting_one_id_stops_at_the_file_of_another_and_writes_nothing(demo, capsys):
+    out = hand_made(demo, "goblin.png", "warrior.png")
+
+    assert run(demo, "--adopt", "warrior") == 2
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"error: {out / 'goblin.png'} already exists and was not written by sprite-tool"
+        " (use --adopt <id>... for those sprites, or --adopt for all)\n"
+    )
+    assert tree(out) == {"goblin.png": b"hand made", "warrior.png": b"hand made"}
+
+
+def test_a23_adopting_every_id_with_a_file_builds_and_names_each_adopted_file(demo, capsys, monkeypatch):
+    out = hand_made(demo, "goblin.png", "warrior.png")
+    monkeypatch.chdir(demo)
+
+    assert run(demo, "--adopt", "warrior", "goblin") == 0
+
+    assert capsys.readouterr().out.splitlines() == [
+        "adopted out/frames/goblin.png",
+        "adopted out/frames/warrior.png",
+        "built: 4 sprites, 6 frames, 1 target",
+    ]
+    assert sorted(tree(out)) == sorted(DEMO_FILES)
+    assert image(out / "warrior.png").size == (32, 32)
+
+
+def test_a24_adopting_an_unknown_id_exits_2_and_writes_nothing(demo, capsys):
+    out = hand_made(demo, "goblin.png")
+
+    assert run(demo, "--adopt", "nosuch") == 2
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "error: unknown sprite id 'nosuch' (sprites: goblin, ground_light, warrior, warrior_red)\n"
+    assert tree(out) == {"goblin.png": b"hand made"}
+
+
+def test_an_unknown_adopt_id_is_reported_even_when_no_file_needs_adopting(demo, capsys):
+    assert run(demo, "--adopt", "goblin", "nosuch") == 2
+    assert "unknown sprite id 'nosuch'" in capsys.readouterr().err
+    assert not (demo / "out").exists()
+
+
+def test_bare_adopt_names_every_file_it_took_sorted_by_directory_then_name(demo, capsys):
+    set_exports(demo, FRAMES + FRAMES.replace("out/frames", "out/more"))
+    out = hand_made(demo, "warrior__idle_0.png", "goblin.png")
+    more = demo / "out" / "more"
+    more.mkdir()
+    (more / "ground_light.png").write_bytes(b"hand made")
+
+    assert run(demo, "--adopt") == 0
+
+    assert capsys.readouterr().out.splitlines() == [
+        f"adopted {out / 'goblin.png'}",
+        f"adopted {out / 'warrior__idle_0.png'}",
+        f"adopted {more / 'ground_light.png'}",
+        "built: 4 sprites, 6 frames, 2 targets",
+    ]
+
+
+def test_adopt_names_nothing_when_there_was_nothing_to_take(demo, capsys):
+    hand_made(demo, "goblin.png")
+    run(demo, "--adopt", "goblin")
+    capsys.readouterr()
+
+    for flags in ([], ["--adopt"], ["--adopt", "goblin"]):
+        assert run(demo, *flags) == 0
+        assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 1 target\n"
+
+
+def test_adopting_a_sprite_does_not_take_its_variants_files(demo, capsys):
+    out = hand_made(demo, "warrior.png", "warrior__idle_1.png", "warrior_red.png", "warrior_red__idle_0.png")
+    before = tree(out)
+
+    assert run(demo, "--adopt", "warrior") == 2
+
+    assert capsys.readouterr().err == (
+        f"error: {out / 'warrior_red.png'} and 1 more already exist and were not written by sprite-tool"
+        " (use --adopt <id>... for those sprites, or --adopt for all)\n"
+    )
+    assert tree(out) == before
+
+
+def test_a_variant_is_adopted_by_its_own_id(demo, capsys):
+    out = hand_made(demo, "warrior_red.png", "warrior_red__idle_0.png")
+
+    assert run(demo, "--adopt", "warrior_red") == 0
+
+    assert capsys.readouterr().out.splitlines() == [
+        f"adopted {out / 'warrior_red.png'}",
+        f"adopted {out / 'warrior_red__idle_0.png'}",
+        "built: 4 sprites, 6 frames, 1 target",
+    ]
+
+
+def test_adopt_warnings_come_before_the_adopted_lines(demo, capsys):
+    out = hand_made(demo, "goblin.png")
+    assert main(["new", "ghost", "--canvas", "unit", "--project", str(demo)]) == 0
+    capsys.readouterr()
+
+    assert run(demo, "--adopt", "goblin") == 0
+
+    warning, adopted, summary = capsys.readouterr().out.splitlines()
+    assert "ghost.sprite.toml" in warning
+    assert adopted == f"adopted {out / 'goblin.png'}"
+    assert summary == "built: 4 sprites, 6 frames, 1 target"
+
+
+def test_a_sprite_that_is_not_exported_is_an_unknown_adopt_id(demo, capsys):
+    add_scout(demo)
+    assert main(["new", "ghost", "--canvas", "unit", "--project", str(demo)]) == 0
+    capsys.readouterr()
+
+    for sprite_id in ("scout", "scout_pale", "ghost"):
+        assert run(demo, "--adopt", sprite_id) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            f"error: unknown sprite id {sprite_id!r} (sprites: goblin, ground_light, warrior, warrior_red)\n"
+        )
+    assert not (demo / "out").exists()
+
+
+def test_check_failures_come_before_an_unknown_adopt_id(demo, capsys):
+    break_goblin(demo)
+
+    assert run(demo, "--adopt", "nosuch") == 1
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out.splitlines()[-1] == "1 error, 0 warnings in 1 file"
+
+
+def test_check_ignores_adopt_and_its_ids(demo, capsys):
+    out = hand_made(demo, "goblin.png")
+
+    assert run(demo, "--check", "--adopt", "nosuch") == 1
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "out/frames/goblin.png: E401 stale" in captured.out.splitlines()
+    assert "adopted" not in captured.out
+    assert tree(out) == {"goblin.png": b"hand made"}
+
+    run(demo, "--adopt")
+    capsys.readouterr()
+    assert run(demo, "--check", "--adopt", "nosuch") == 0
+    assert capsys.readouterr().out == "up to date: 4 sprites, 6 frames, 1 target\n"
+
+
+def test_build_help_describes_adopt(capsys):
+    with pytest.raises(SystemExit):
+        main(["build", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "--adopt [id ...]" in text
+    assert "overwrite existing files the tool did not write: all of them, or only those of the given sprite ids" in text
 
 
 def test_an_unowned_file_in_one_directory_leaves_every_directory_untouched(demo):

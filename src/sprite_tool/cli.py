@@ -257,6 +257,13 @@ def _build(args: argparse.Namespace) -> int:
     # A sprite that is still blank has its warning and is not exported; nor is
     # one that says `build = false`.
     sprites = [sprite for sprite in sprites if sprite.build and not check.is_blank(sprite)]
+    # `--adopt` alone takes every file; with ids, only the files of those sprites.
+    adopt_ids = None if args.check or not args.adopt else frozenset(args.adopt)
+    if adopt_ids:
+        built = sorted(sprite.id for sprite in sprites)
+        for name in args.adopt:
+            if name not in built:
+                return _usage_error(f"unknown sprite id {name!r} (sprites: {', '.join(built) or 'none'})")
     # Nothing is written until every directory has passed its checks.
     images = render.render_all(sprites, project.palette)
     plans = manifest.plan(
@@ -264,13 +271,17 @@ def _build(args: argparse.Namespace) -> int:
     )
     if args.check:
         problems += manifest.compare(plans)
-    elif not args.adopt:
-        manifest.check_ownership(plans)
+    elif args.adopt != []:
+        manifest.check_ownership(plans, adopt_ids)
 
     if report(problems, project.root):
         return EXIT_CHECK_FAILED
     if not args.check:
+        # Read before the build makes them owned. Any that passed the check is adopted.
+        adopted = [item.directory / name for item in plans for name in item.unowned]
         manifest.apply(plans)
+        for path in adopted:
+            print(f"adopted {_from_cwd(path, project.root)}")
     frames = sum(len(sprite.frames) for sprite in sprites)
     totals = f"{count(len(sprites), 'sprite')}, {count(frames, 'frame')}, {count(len(project.exports), 'target')}"
     print(f"{'up to date' if args.check else 'built'}: {totals}")
@@ -445,7 +456,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     build = commands.add_parser("build", parents=[in_project], help="check everything, then write every export target")
     build.add_argument("--check", action="store_true", help="write nothing; exit 1 if generated files are missing or stale")
-    build.add_argument("--adopt", action="store_true", help="take ownership of existing files in the export directories")
+    build.add_argument(
+        "--adopt",
+        nargs="*",
+        metavar="id",
+        help="overwrite existing files the tool did not write: all of them, or only those of the given sprite ids",
+    )
 
     import_ = commands.add_parser("import", parents=[in_project], help="write a sprite file from a PNG")
     import_.add_argument("png", help="PNG file to import")
