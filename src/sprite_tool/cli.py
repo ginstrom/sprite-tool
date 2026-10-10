@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import re
 import sys
 from collections.abc import Callable, Iterable, Sequence
 from importlib import resources
@@ -124,6 +126,62 @@ def _init(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+_SPRITE_ID_RE = re.compile(r"[a-z0-9_]+")
+
+
+def _new(args: argparse.Namespace) -> int:
+    project, _ = load_project(args)
+    if not _SPRITE_ID_RE.fullmatch(args.id):
+        return _usage_error(f"sprite id {args.id!r} must match {_SPRITE_ID_RE.pattern}")
+    canvas = project.canvases.get(args.canvas)
+    if canvas is None:
+        return _unknown_canvas(args.canvas, project)
+    directory = (project.root / (args.dir or "")).resolve()
+    if not directory.is_relative_to(project.root):
+        return _usage_error(f"--dir {args.dir} is outside the project")
+    path = directory / (args.id + spritefile.SUFFIX)
+    if path.exists():
+        return _usage_error(f"{_from_cwd(path, project.root)} already exists")
+    user = _sprite_ids(project).get(args.id)
+    if user is not None:
+        used_by = user.relative_to(project.root).as_posix()
+        return _usage_error(f"sprite id {args.id!r} is already used by {used_by}")
+
+    grid = (spritefile.TRANSPARENT * canvas.width + "\n") * canvas.height
+    text = f'canvas = "{canvas.name}"\n\n[frames]\nmain = """\n{grid}"""\n'
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        return _usage_error(f"cannot write sprite file: {exc}")
+    print(_from_cwd(path, project.root))
+    return EXIT_OK
+
+
+def _sprite_ids(project: Project) -> dict[str, Path]:
+    """Every sprite id in use, variants included, with the file that defines it."""
+    paths = spritefile.discover(project.root)
+    # File stems first, so that a file too broken to give a sprite still holds its id.
+    ids = {path.name.removesuffix(spritefile.SUFFIX): path for path in paths}
+    for sprite in spritefile.load_all(project, paths)[0]:
+        ids.setdefault(sprite.id, sprite.source)
+    return ids
+
+
+def _from_cwd(path: Path, root: Path) -> str:
+    """`path` as the user would type it: relative to the current directory when
+    that is inside the project or holds the path, else absolute."""
+    cwd = Path.cwd()
+    if path.is_relative_to(cwd) or cwd.is_relative_to(root):
+        return Path(os.path.relpath(path, cwd)).as_posix()
+    return str(path)
+
+
+def _unknown_canvas(name: str, project: Project) -> int:
+    expected = ", ".join(project.canvases)
+    return _usage_error(f"unknown canvas class {name!r} (expected one of {expected})")
+
+
 def _check(args: argparse.Namespace) -> int:
     given = [Path(path) for path in args.paths]
     images = [path for path in given if path.suffix.lower() == ".png"]
@@ -140,8 +198,7 @@ def _check(args: argparse.Namespace) -> int:
     if images and not palette_failed:
         canvas = project.canvases.get(args.canvas)
         if canvas is None:
-            expected = ", ".join(project.canvases)
-            return _usage_error(f"unknown canvas class {args.canvas!r} (expected one of {expected})")
+            return _unknown_canvas(args.canvas, project)
         for path in images:
             problems += check.check_png(project, path, canvas)
     if given and not palette_failed:
@@ -192,7 +249,7 @@ def _build(args: argparse.Namespace) -> int:
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "init": _init,
     "guide": _not_implemented,
-    "new": _not_implemented,
+    "new": _new,
     "check": _check,
     "preview": _not_implemented,
     "build": _build,

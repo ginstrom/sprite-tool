@@ -12,7 +12,6 @@ SUBCOMMANDS = ["init", "guide", "new", "check", "preview", "build", "import"]
 # One valid invocation per subcommand that is still a stub, using every flag it declares.
 INVOCATIONS = {
     "guide": ["guide", "--project", "p"],
-    "new": ["new", "warrior", "--canvas", "unit", "--dir", "units", "--project", "p"],
     "preview": ["preview", "warrior", "goblin", "--scale", "8", "--grid", "--on", "grass", "--sheet", "--project", "p"],
     "preview all": ["preview"],
     "import": ["import", "hero.png", "--canvas", "unit", "--id", "hero", "--scale", "4", "--snap", "--project", "p"],

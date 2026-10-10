@@ -158,3 +158,108 @@ def test_templates_match_the_demo(template):
 @pytest.mark.parametrize("name", ["sprite-tool.toml", "palette.toml", "warrior.sprite.toml", "gitignore"])
 def test_templates_ship_in_the_package(name):
     assert resources.files("sprite_tool").joinpath("templates", name).read_text(encoding="utf-8")
+
+
+# --- new ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def project(empty: Path, capsys) -> Path:
+    """A freshly initialised project, as the current directory."""
+    assert main(["init"]) == 0
+    capsys.readouterr()
+    return empty
+
+
+def test_new_writes_a_blank_unit_and_prints_its_path(project, capsys):
+    assert main(["new", "kobold", "--canvas", "unit", "--dir", "units"]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == "units/kobold.sprite.toml\n"
+    assert captured.err == ""
+
+    text = (project / "units" / "kobold.sprite.toml").read_text(encoding="utf-8")
+    data = tomllib.loads(text)
+    assert data == {"canvas": "unit", "frames": {"main": ("." * 32 + "\n") * 32}}
+    assert text.endswith('"""\n')
+
+
+def test_a_new_sprite_fails_check_with_e106_only(project, capsys):
+    assert main(["new", "kobold", "--canvas", "unit", "--dir", "units"]) == 0
+    path = capsys.readouterr().out.strip()
+
+    assert main(["check", path]) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "units/kobold.sprite.toml:5:1: E106 frame 'main' is fully transparent",
+        "1 error, 0 warnings in 1 file",
+    ]
+
+
+def test_new_tile_is_16_rows_of_16_in_the_project_root(project, capsys):
+    assert main(["new", "grass", "--canvas", "tile"]) == 0
+    assert capsys.readouterr().out == "grass.sprite.toml\n"
+    rows = tomllib.loads((project / "grass.sprite.toml").read_text(encoding="utf-8"))["frames"]["main"]
+    assert rows.splitlines() == ["." * 16] * 16
+
+
+def test_new_creates_the_subdirectory(project, capsys):
+    assert main(["new", "spark", "--canvas", "tile", "--dir", "effects/small"]) == 0
+    assert capsys.readouterr().out == "effects/small/spark.sprite.toml\n"
+    assert (project / "effects" / "small" / "spark.sprite.toml").is_file()
+
+
+def test_new_dir_is_relative_to_the_project_not_the_current_directory(project, tmp_path, monkeypatch, capsys):
+    (project / "units").mkdir(exist_ok=True)
+    monkeypatch.chdir(project / "units")
+    assert main(["new", "grass", "--canvas", "tile", "--dir", "tiles"]) == 0
+    assert capsys.readouterr().out == "../tiles/grass.sprite.toml\n"
+    assert (project / "tiles" / "grass.sprite.toml").is_file()
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["new", "bat", "--canvas", "unit", "--project", str(project)]) == 0
+    assert capsys.readouterr().out == "game/bat.sprite.toml\n"
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert main(["new", "rat", "--canvas", "unit", "--project", str(project)]) == 0
+    assert capsys.readouterr().out == f"{project / 'rat.sprite.toml'}\n"
+
+
+NEW_REFUSALS = {
+    "existing file": (["warrior", "--canvas", "unit", "--dir", "units"], "units/warrior.sprite.toml already exists"),
+    "id used in another directory": (
+        ["warrior", "--canvas", "unit"],
+        "sprite id 'warrior' is already used by units/warrior.sprite.toml",
+    ),
+    "id used by a variant": (
+        ["warrior_red", "--canvas", "unit"],
+        "sprite id 'warrior_red' is already used by units/warrior.sprite.toml",
+    ),
+    "upper case id": (["Kobold", "--canvas", "unit"], "sprite id 'Kobold' must match [a-z0-9_]+"),
+    "id with a path": (["units/kobold", "--canvas", "unit"], "sprite id 'units/kobold' must match [a-z0-9_]+"),
+    "id with a trailing newline": (["kobold\n", "--canvas", "unit"], "sprite id 'kobold\\n' must match [a-z0-9_]+"),
+    "empty id": (["", "--canvas", "unit"], "sprite id '' must match [a-z0-9_]+"),
+    "unknown class": (["kobold", "--canvas", "boss"], "unknown canvas class 'boss' (expected one of unit, tile)"),
+    "directory outside the project": (
+        ["kobold", "--canvas", "unit", "--dir", "../elsewhere"],
+        "--dir ../elsewhere is outside the project",
+    ),
+}
+
+
+@pytest.mark.parametrize("argv, message", NEW_REFUSALS.values(), ids=NEW_REFUSALS.keys())
+def test_new_refusals_exit_2_and_write_nothing(project, capsys, argv, message):
+    before = files(project.parent)
+    assert main(["new", *argv]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"error: {message}\n"
+    assert files(project.parent) == before
+
+
+def test_new_outside_a_project_exits_2(empty, capsys):
+    assert main(["new", "kobold", "--canvas", "unit"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "sprite-tool.toml" in captured.err
+    assert files(empty) == {}
