@@ -178,15 +178,24 @@ def check_png(project: Project, path: Path, canvas: Canvas) -> list[Problem]:
         message = f"image is {image.width}x{image.height}, canvas {canvas.name!r} is {canvas.width}x{canvas.height}"
         problems.append(Problem(path, 0, 0, "E301", message))
 
-    off_palette = [
-        (index, rgba)
-        for index, rgba in enumerate(image.get_flattened_data())
-        if not is_palette_colour(project, rgba)
+    problems += off_palette_problems(
+        path,
+        [
+            (*reversed(divmod(index, image.width)), rgba)
+            for index, rgba in enumerate(image.get_flattened_data())
+            if not is_palette_colour(project, rgba)
+        ],
+    )
+    return problems
+
+
+def off_palette_problems(path: Path, pixels: Sequence[tuple[int, int, tuple[int, int, int, int]]]) -> list[Problem]:
+    """One E302 per `(x, y, colour)`, up to the cap, then one line with the remaining count."""
+    problems = [
+        Problem(path, y, x, "E302", f"colour {hex_colour(rgba)} is not in the palette", pixel=True)
+        for x, y, rgba in pixels[:MAX_E302_PER_FILE]
     ]
-    for index, rgba in off_palette[:MAX_E302_PER_FILE]:
-        y, x = divmod(index, image.width)
-        problems.append(Problem(path, y, x, "E302", f"colour {hex_colour(rgba)} is not in the palette", pixel=True))
-    extra = len(off_palette) - MAX_E302_PER_FILE
+    extra = len(pixels) - MAX_E302_PER_FILE
     if extra > 0:
         noun = "pixel" if extra == 1 else "pixels"
         problems.append(Problem(path, 0, 0, "E302", f"{extra} more {noun} not in the palette"))
