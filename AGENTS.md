@@ -44,7 +44,12 @@ Everything runs through `uv`.
 - `src/sprite_tool/cli.py`: argument parsing and dispatch. Each subcommand has
   one entry in `HANDLERS`; a handler takes the parsed arguments and returns
   the exit code. Handlers call `load_project(args)` to resolve and load the
-  project.
+  project, or `load_checked(args)` to load and check every sprite as well.
+  `report(problems, root)` prints problems and the failure summary.
+- `src/sprite_tool/spritefile.py`: parses `*.sprite.toml` into sprites, and
+  reports what it cannot parse.
+- `src/sprite_tool/check.py`: checks on resolved sprites (`run`) and on PNG
+  files (`check_png`).
 - `src/sprite_tool/render.py`: frames to RGBA images. `png_bytes` is the only
   place PNGs are encoded for export.
 - `src/sprite_tool/pack.py`: the shelf packer. Works on sizes only.
@@ -53,3 +58,5 @@ Everything runs through `uv`.
 - `tests/conftest.py`: `write_project` and the `project_dir` fixture for
   building a project under `tmp_path`; `make_frame`, `make_sprite` and
   `pixels` for tests that build sprites directly.
+- `examples/demo/`: a small complete project, used by tests as a fixture.
+  Tests copy it to `tmp_path` before changing or building it.

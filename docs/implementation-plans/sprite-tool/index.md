@@ -32,7 +32,7 @@ Every task file repeats the ones that apply to it.
 |---|---|---|---|---|
 | 01 | [Scaffold, model and project loading](01-scaffold-model-project.md) | Installable package, `sprite` CLI skeleton with all subcommands declared, data model, config and palette loading | none | done |
 | 02 | [Sprite file parser](02-sprite-file-parser.md) | `*.sprite.toml` parsed into sprites with derived frames, variants and source positions | 01 | done |
-| 03 | [Checks, `check` command and demo project](03-checks-and-demo.md) | Style and PNG checks, working `sprite check`, `examples/demo/` sources | 02 | pending |
+| 03 | [Checks, `check` command and demo project](03-checks-and-demo.md) | Style and PNG checks, working `sprite check`, `examples/demo/` sources | 02 | done |
 | 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | done |
 | 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | pending |
 | 06 | [Phaser export](06-phaser-export.md) | `phaser` target: sheet, JSON Hash atlas, animation JSON | 05 | pending |
@@ -160,6 +160,42 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Step 03, 2026-10-10, commits `e1e4eae`, `9874710`, `52a0ec9`, and the commit that adds this entry
+
+**Evidence**
+
+- `make test`: 578 passed (510 before the step; 37 new in `tests/test_check.py`, 28 in `tests/test_check_command.py`, 3 in `tests/test_demo.py`, 2 in `tests/test_model.py`; 2 stub cases for `check` removed from `tests/test_cli.py`). `make check`: same.
+- `uv run sprite check --project examples/demo` prints `ok: 4 sprites, 6 frames` and exits 0.
+- A3 is `test_a3_three_problems_with_positions_then_the_summary`: exit 1, three lines at `6:3` (E104), `6:6` (E103) and `13:5` (E201), then `3 errors, 0 warnings in 1 file`.
+- A11 is `test_a11_png_reports_size_mismatch_and_off_palette_pixels`; the E103 part of A14 is `test_a14_sixteen_wide_row_in_a_32x32_sprite_is_e103`.
+- Every code in the step's table has a test asserting code, line and column.
+
+**Names later steps need**
+
+- `check.run(project, sprites)` and `check.check_png(project, path, canvas)`, as in the task file. `check.run` returns problems unsorted.
+- `check.is_palette_colour(project, rgba) -> bool` is the palette match used for PNG pixels (alpha 0, or exactly a palette colour). Step 10 can reuse it.
+- `cli.load_checked(args, extra=()) -> (project, sprites, problems)`. `extra` is a list of sprite files to load in addition to those found in the project. With a bad palette it returns no sprites and only the palette problems.
+- `cli.report(problems, root) -> int` sorts before printing, so callers may add problems to the list from `load_checked`.
+- `cli.count(number, noun)` gives `1 sprite` or `2 sprites`; the `ok:` line uses it.
+- `Problem` has a new field `pixel: bool = False`. When true, `col` is x and `line` is y (zero-based) and `format_problem` prints `path:x,y:`.
+- `examples/demo/` has no `[[export]]` blocks. Its sprite ids are `goblin`, `ground_light`, `warrior`, `warrior_red`. `warrior` has frames `idle_0` (grid) and `idle_1` (derived, row 9 replaced) and animation `idle`; `goblin` and `ground_light` each have one frame, `main`.
+
+**Choices the task file left open**
+
+- **Summary counts are singular for one**: `ok: 1 sprite, 1 frame`, `1 error, 0 warnings in 1 file`. The failure summary always gives the warning count. "Files" counts every file with a printed problem, warnings included.
+- **Given paths.** A path must end in `.sprite.toml` or `.png`, else exit 2. A sprite file that does not exist is an E001 line (exit 1). The `ok:` line counts only the sprites from the given files. `W001` is at `palette.toml`, so it is not printed when paths are given; palette errors always are.
+- **PNG paths.** An unknown `--canvas` exits 2. A PNG that cannot be read is E001. Clean PNGs add a count to the summary: `ok: 0 sprites, 0 frames, 1 image`. A PNG with the wrong size still has its pixels checked.
+- **Positions.** E106 and W002 are at the frame's line, column 1. E202 is at the bottom row of a grid frame, column 1. E003, E301 and W001 have no line. W002 is one line per sprite, at the first unused frame, listing them all.
+- **Count lines.** The E201 count line is at the frame's line, column 1, and the E302 count line has no position, so after sorting a count line can come before the pixel lines it follows on from.
+- **E106 excludes E202.** A fully transparent frame is reported as E106 only.
+- **Variants (P7).** A variant's E201 lines leave out any pixel that already fails in the base sprite, so a base fault is reported once. The message starts `variant 'warrior_red' frame 'idle_0'`.
+- **Derived frames** report E201 as `frame 'idle_1' row 2, col 4`, zero-based, at the frame's line.
+
+**Notes**
+
+- The demo art was drawn with a throwaway script (not committed) that fills shapes and then outlines them with `k`. The committed sprite files are the source of truth.
+- W002 can appear for a frame whose only animation was dropped for an error. It comes with that error, so it does not change the exit code.
 
 ### Step 04, 2026-10-10, commits `c3c0d17`, `ed9ed22`, and the commit that adds this entry
 

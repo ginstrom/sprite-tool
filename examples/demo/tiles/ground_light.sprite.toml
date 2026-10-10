@@ -1,0 +1,22 @@
+# A ground tile. The `tile` canvas has no outline or grounded rule.
+canvas = "tile"
+
+[frames]
+main = """
+gggggggggggggggg
+gggggggggGGggggg
+ggGGgggggGgggggg
+ggGgggyggggggggg
+gggggggggggggGGg
+ggggggggggtggGgg
+gggggGGggggggggg
+gggggGgggggggggg
+gggygggggggGGggg
+gggggggggggGgggt
+gGGggggggggggggg
+gGggggggggggyggg
+gggggggGGggggggg
+ggtggggGggggggGG
+ggggGGggggggggGg
+ggggGggggggggggg
+"""

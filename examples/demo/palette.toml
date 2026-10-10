@@ -1,0 +1,18 @@
+# Sweetie 16 by GrafxKid. One character per colour; '.' is transparent.
+[colors]
+k = { hex = "#1a1c2c", name = "outline" }
+R = { hex = "#5d275d", name = "dark red" }
+r = { hex = "#b13e53", name = "red" }
+o = { hex = "#ef7d57", name = "orange" }
+y = { hex = "#ffcd75", name = "yellow" }
+g = { hex = "#a7f070", name = "light green" }
+G = { hex = "#38b764", name = "green" }
+t = { hex = "#257179", name = "teal" }
+B = { hex = "#29366f", name = "dark blue" }
+b = { hex = "#3b5dc9", name = "blue" }
+c = { hex = "#41a6f6", name = "light blue" }
+C = { hex = "#73eff7", name = "cyan" }
+w = { hex = "#f4f4f4", name = "white" }
+l = { hex = "#94b0c2", name = "light grey" }
+d = { hex = "#566c86", name = "grey" }
+D = { hex = "#333c57", name = "dark grey" }
