@@ -63,6 +63,10 @@ Everything runs through `uv`.
   type. An exporter returns `{relative path: bytes}` and never touches the
   disk. `export/frames.py` is the loose-PNG target; `export/phaser.py` is the
   Phaser atlas target (sheet, JSON Hash atlas, animation JSON).
+- `src/sprite_tool/preview.py`: the images `sprite preview` writes
+  (`sprite_preview`, `on_tile`, `contact_sheet`). Layout sizes are named
+  constants, which the tests use. Previews are written straight to
+  `.preview/`, not through the manifest.
 - `src/sprite_tool/manifest.py`: the only code that creates, overwrites or
   deletes export files (`plan`, `check_ownership`, `apply`, `compare`), and
   `json_bytes`, the one JSON encoder for generated files.

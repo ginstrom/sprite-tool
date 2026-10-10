@@ -37,7 +37,7 @@ Every task file repeats the ones that apply to it.
 | 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | done |
 | 06 | [Phaser export](06-phaser-export.md) | `phaser` target: sheet, JSON Hash atlas, animation JSON | 05 | done |
 | 07 | [Godot export](07-godot-export.md) | `godot` target: sheet, `SpriteFrames` `.tres` per sprite, index JSON | 05 | pending |
-| 08 | [Preview](08-preview.md) | `sprite preview` for sprites, `--grid`, `--on`, contact sheet | 03, 04 | pending |
+| 08 | [Preview](08-preview.md) | `sprite preview` for sprites, `--grid`, `--on`, contact sheet | 03, 04 | done |
 | 09 | [`init`, `new` and `guide`](09-init-new-guide.md) | Project scaffolding, blank sprite scaffolding, agent reference text | 05 | done |
 | 10 | [Import](10-import.md) | `sprite import` with `--scale` and `--snap` | 03, 04 | pending |
 | 11 | [Golden files, documentation and acceptance](11-golden-docs-acceptance.md) | Golden output, determinism and speed tests, README and AGENTS.md, manual acceptance | 06, 07, 08, 09, 10 | pending |
@@ -160,6 +160,46 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Step 08, 2026-10-10, commits `fbd8ce6`, `0570db6`, and the commit that adds this entry
+
+**Evidence**
+
+- `make test`: 762 passed (716 before the step; 48 new in `tests/test_preview.py`; 2 stub cases for `preview` removed from `tests/test_cli.py`). `make check`: same.
+- A9 is `test_a9_preview_writes_one_png_and_prints_only_its_path`: stdout is exactly `.preview/goblin.png` and a newline, and the image is `32 * 6 + 2 * MARGIN` square.
+- A15 is `test_a15_on_writes_the_unit_on_the_tile` (the command) and `test_a15_unit_stands_on_the_tile_each_at_its_own_display_scale` (the layout). `test_unit_anchor_is_at_the_bottom_centre_of_a_larger_tile` and `test_image_grows_to_show_a_unit_larger_than_the_tile` cover the anchor position where the demo's sizes would hide a mistake, because the demo's unit and tile are both 128 pixels square on screen.
+- Every case in the task file's verification list has a test.
+- Manual check, on a copy of the demo: `sprite preview warrior --grid --sheet`, `sprite preview warrior` and `sprite preview warrior --on ground_light` were run and the PNGs looked at. Frames, the red variant row, grid lines, the indices 0 to 28, the ids on the sheet and the warrior on the tile are all legible.
+- `uv run sprite build --project examples/demo` still prints `built: 4 sprites, 6 frames, 2 targets`.
+
+**Names later steps need**
+
+- `preview.sprite_preview(project, sprite, variants, scale, grid=False)`, `preview.on_tile(project, sprite, tile, scale)` and `preview.contact_sheet(project, sprites)`, each returning an RGBA `PIL.Image`.
+- Layout constants in `preview.py`: `MARGIN` 8 (border of every image), `GAP` 8 (between frames, rows and sheet cells), `GRID_MARGIN` 20, `GRID_LABEL_EVERY` 4, `ON_TILE_SCALE` 2, `SHEET_COLUMNS` 8, `LABEL_GAP` 2, and the font's `CHAR_WIDTH` 6 and `LINE_HEIGHT` 11.
+- `cli.PREVIEW_DIR` is `".preview"`.
+- `tests/test_preview.py` has the `demo` fixture (a copy of the demo as the current directory) and `break_sprite(root, name)`.
+
+**Choices the task file left open**
+
+- **Sizes without the grid.** Width is `2 * MARGIN + frames * canvas width * scale + (frames - 1) * GAP`; height is the same with rows (the sprite, then each variant).
+- **The grid adds pixels instead of covering them.** Each art pixel is `scale` pixels plus a one-pixel line, so a gridded frame is `canvas * (scale + 1) + 1` and no art is hidden, even at `--scale 1`. Each frame has its own `GRID_MARGIN` on the left and top with the indices.
+- **Label and line colours follow the background**: white text on a dark background, black on a light one, and grid lines half-way between.
+- **Text uses `ImageFont.load_default_imagefont()`**, the bitmap font. `load_default()` returns a FreeType font when Pillow has FreeType.
+- **`--on` writes `.preview/<id>.png`**, the same name as the plain preview. `--scale` is the common factor; `[preview].scale` is not used in this mode.
+- **`--on` with no id** writes only the contact sheet. The tile id is still checked (unknown is exit 2).
+- **`--scale` and `--grid` do not affect the contact sheet.**
+- **Contact sheet layout.** Classes in config order, each starting a new row; at most `SHEET_COLUMNS` sprites per row. A cell is as wide as the sprite or the longest id in its class, whichever is greater, with the art and the id centred.
+- **Checks.** With ids only, the problems considered are those in the files of the requested sprites and the `--on` tile; an error in another sprite does not stop the preview. With the contact sheet, every problem counts. A palette error always stops it (P5). Warnings are printed only alongside an error, so a successful run prints paths only.
+- **An id whose file is too broken to give a sprite** is a check failure (exit 1, the file's problems), not an unknown id. A variant of such a file is an unknown id (exit 2), since nothing names it.
+- **Order.** A repeated id is written once. Paths are printed in the order given, the sheet last. All images are made before any is written.
+- **A preview that cannot be written** is `error: cannot write preview: <reason>`, exit 2.
+- The preview background may have alpha; the image then keeps it.
+
+**Notes**
+
+- Grid indices overlap below about `--scale 3` for two-digit columns (a label is 12 pixels wide and labelled columns are `4 * (scale + 1)` apart, so they touch at scale 2).
+- A canvas more than 999 pixels on a side would have labels wider than `GRID_MARGIN`.
+- Old files in `.preview/` are never removed.
 
 ### Step 09, 2026-10-10, commits `397f8c5`, `672f910`, `1ca4c67`, and the commit that adds this entry
 
