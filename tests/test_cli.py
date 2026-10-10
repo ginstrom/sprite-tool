@@ -9,20 +9,6 @@ from sprite_tool.cli import main
 
 SUBCOMMANDS = ["init", "guide", "new", "check", "preview", "build", "import"]
 
-# One valid invocation per subcommand that is still a stub, using every flag it declares.
-INVOCATIONS = {
-    "import": ["import", "hero.png", "--canvas", "unit", "--id", "hero", "--scale", "4", "--snap", "--project", "p"],
-}
-
-
-@pytest.mark.parametrize("argv", INVOCATIONS.values(), ids=INVOCATIONS.keys())
-def test_unimplemented_subcommands_are_stubs(argv, capsys):
-    assert main(argv) == 2
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err == "error: not implemented\n"
-
-
 def test_help_lists_all_subcommands(capsys):
     with pytest.raises(SystemExit) as excinfo:
         main(["--help"])

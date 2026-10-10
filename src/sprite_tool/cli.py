@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterable, Sequence
 from importlib import resources
 from pathlib import Path
 
-from . import check, manifest, render, spritefile
+from . import check, importer, manifest, render, spritefile
 from . import preview as preview_module
 from . import guide as guide_module
 from . import project as project_module
@@ -92,10 +92,6 @@ def _is_error(problem: Problem) -> bool:
 def _usage_error(message: str) -> int:
     print(f"error: {message}", file=sys.stderr)
     return EXIT_USAGE
-
-
-def _not_implemented(args: argparse.Namespace) -> int:
-    return _usage_error("not implemented")
 
 
 # Template name to the path `init` writes it to. The last is not counted in the summary line.
@@ -308,6 +304,39 @@ def _preview(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _import(args: argparse.Namespace) -> int:
+    project, problems = load_project(args)
+    png = Path(args.png)
+    sprite_id = png.stem if args.id is None else args.id
+    if not _SPRITE_ID_RE.fullmatch(sprite_id):
+        hint = " (use --id <id>)" if args.id is None else ""
+        return _usage_error(f"sprite id {sprite_id!r} must match {_SPRITE_ID_RE.pattern}{hint}")
+    canvas = project.canvases.get(args.canvas)
+    if canvas is None:
+        return _unknown_canvas(args.canvas, project)
+    path = project.root / (sprite_id + spritefile.SUFFIX)
+    if path.exists():
+        return _usage_error(f"{_from_cwd(path, project.root)} already exists")
+    user = _sprite_ids(project).get(sprite_id)
+    if user is not None:
+        used_by = user.relative_to(project.root).as_posix()
+        return _usage_error(f"sprite id {sprite_id!r} is already used by {used_by}")
+
+    if report(problems, project.root):
+        return EXIT_CHECK_FAILED
+    result = importer.import_png(png, canvas, project.palette, scale=args.scale or 1, snap=args.snap)
+    if report(result.problems, project.root):
+        return EXIT_CHECK_FAILED
+    try:
+        path.write_text(importer.sprite_text(canvas.name, result.rows), encoding="utf-8")
+    except OSError as exc:
+        return _usage_error(f"cannot write sprite file: {exc}")
+    for line in result.snapped:
+        print(line)
+    print(_from_cwd(path, project.root))
+    return EXIT_OK
+
+
 # One handler per subcommand. Each takes the parsed arguments and returns the exit code.
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "init": _init,
@@ -316,7 +345,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "check": _check,
     "preview": _preview,
     "build": _build,
-    "import": _not_implemented,
+    "import": _import,
 }
 
 
