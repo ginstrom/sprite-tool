@@ -9,7 +9,7 @@ from PIL import Image
 
 from sprite_tool.model import ExportTarget, Sprite
 
-from . import frames
+from . import frames, phaser
 
 # Maps a path relative to `target.out` to the content of that file.
 Exporter = Callable[
@@ -19,4 +19,5 @@ Exporter = Callable[
 # One entry per target type that can be built.
 EXPORTERS: dict[str, Exporter] = {
     "frames": frames.export,
+    "phaser": phaser.export,
 }

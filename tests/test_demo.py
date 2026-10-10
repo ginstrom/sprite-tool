@@ -17,7 +17,10 @@ def test_demo_project_checks_clean(capsys):
 def test_demo_project_has_the_sprites_later_steps_rely_on():
     project, problems = load(DEMO)
     assert problems == []
-    assert [(target.type, target.out) for target in project.exports] == [("frames", DEMO / "out" / "frames")]
+    assert [(target.type, target.out, target.name) for target in project.exports] == [
+        ("frames", DEMO / "out" / "frames", None),
+        ("phaser", DEMO / "out" / "phaser", "atlas"),
+    ]
     assert len(project.palette) == 16
     sprites, problems = spritefile.load_all(project)
     assert problems == []

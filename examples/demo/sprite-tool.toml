@@ -19,3 +19,8 @@ background = "#3a3a3a"
 [[export]]
 type = "frames"
 out = "out/frames"
+
+[[export]]
+type = "phaser"
+out = "out/phaser"
+name = "atlas"
