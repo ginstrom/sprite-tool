@@ -535,6 +535,176 @@ def test_wrongly_typed_or_unknown_derived_field_is_e001(project, body, line):
     assert [frame.name for frame in sprite.frames] == ["idle_0"]
 
 
+# --- runs -------------------------------------------------------------------
+
+
+def test_run_replaces_exactly_its_pixels(project):
+    (sprite,), problems = derived(project, 'from = "idle_0"\nruns = { 1 = [[1, "rb"]] }\n')
+
+    assert problems == []
+    assert frame_rows(sprite, "next") == ("k...", "krb.", "kbw.")
+
+
+def test_dot_in_a_run_erases_a_parent_pixel(project):
+    (sprite,), problems = derived(project, 'from = "idle_0"\nruns = { 2 = [[0, ".r."]] }\n')
+
+    assert problems == []
+    assert frame_rows(sprite, "next") == ("k...", "kw..", ".r..")
+
+
+def test_runs_in_a_row_apply_in_list_order_so_a_later_run_wins(project):
+    (sprite,), problems = derived(project, 'from = "idle_0"\nruns = { 0 = [[0, "rrr"], [2, "bb"], [1, "w"]] }\n')
+
+    assert problems == []
+    assert frame_rows(sprite, "next") == ("rwbb", "kw..", "kbw.")
+
+
+def test_rows_then_runs_then_shift_then_flip(project):
+    # rows:  k... / rrrr / kbw.    runs:  k... / rbbr / kbw.
+    # shift [1, 0]:  .k.. / .rbb / .kbw    flip:  ..k. / bbr. / wbk.
+    body = 'flip = true\nshift = [1, 0]\nruns = { 1 = [[1, "bb"]] }\nrows = { 1 = "rrrr" }\nfrom = "idle_0"\n'
+    (sprite,), problems = derived(project, body)
+
+    assert problems == []
+    assert frame_rows(sprite, "next") == ("..k.", "bbr.", "wbk.")
+
+
+def test_a18_runs_only_frame_equals_the_same_frame_written_as_a_grid(project):
+    """A18, at the grid level: no `from`, so the frame starts transparent."""
+    text = TINY.replace("idle_0", "full") + '\n[frames.main.runs]\n0 = [[1, "kk"]]\n1 = [[0, "kwwk"]]\n2 = [[0, "k"], [1, "bbk"]]\n'
+    (sprite,), problems = load_text(project, text)
+
+    assert problems == []
+    assert frame_rows(sprite, "main") == frame_rows(sprite, "full") == (".kk.", "kwwk", "kbbk")
+
+
+def test_runs_only_frame_is_not_literal_and_has_no_parent(project):
+    (sprite,), _ = load_text(project, 'canvas = "tiny"\n\n[frames.main.runs]\n2 = [[0, "kk"]]\n')
+    (frame,) = sprite.frames
+    assert (frame.name, frame.literal, frame.parent) == ("main", False, None)
+
+
+def test_runs_only_frame_written_under_its_runs_header_has_that_line(project):
+    (sprite,), _ = load_text(project, 'canvas = "tiny"\n\n[frames.main.runs]\n2 = [[0, "kk"]]\n')
+    assert sprite.frames[0].line == 3
+
+
+def test_rows_without_from_start_from_a_transparent_canvas(project):
+    (sprite,), problems = load_text(project, 'canvas = "tiny"\n\n[frames.main]\nrows = { 1 = "kwwk" }\nflip = true\n')
+
+    assert problems == []
+    assert frame_rows(sprite, "main") == ("....", "kwwk", "....")
+
+
+def test_frame_may_derive_from_a_runs_only_frame(project):
+    text = 'canvas = "tiny"\n\n[frames.a]\nfrom = "b"\nflip = true\n\n[frames.b.runs]\n0 = [[0, "kw"]]\n'
+    (sprite,), problems = load_text(project, text)
+
+    assert problems == []
+    assert frame_rows(sprite, "a") == ("..wk", "....", "....")
+
+
+def test_table_with_none_of_from_rows_and_runs_is_e001(project):
+    (sprite,), problems = derived(project, "shift = [1, 0]\n")
+
+    assert [format_problem(problem, project.root) for problem in problems] == [
+        "hero.sprite.toml:10:1: E001 frame 'next': needs from, rows or runs"
+    ]
+    assert [frame.name for frame in sprite.frames] == ["idle_0"]
+
+
+def test_frame_of_the_wrong_type_says_what_a_table_needs(project):
+    _, problems = load_text(project, TINY + "walk = 3\n")
+    assert problems[0].message == "frame 'walk' must be a grid string or a table with from, rows or runs"
+
+
+# --- runs problems ----------------------------------------------------------
+
+
+def runs_body(form, entry):
+    """A `next` frame with a good run on row 0 and then `entry`, and the line `entry` is reported at."""
+    if form == "inline":
+        return f'from = "idle_0"\nruns = {{ 0 = [[0, "k"]], {entry} }}\n', 12
+    return f'from = "idle_0"\n\n[frames.next.runs]\n0 = [[0, "k"]]\n{entry}\n', 15
+
+
+RUNS_FORMS = pytest.mark.parametrize("form", ["inline", "table"])
+NOT_PAIRS = "frame 'next' row 1: runs must be a list of [column, \"pixels\"] pairs"
+
+
+@RUNS_FORMS
+@pytest.mark.parametrize(
+    "entry, code, message",
+    [
+        ('3 = [[0, "k"]]', "E105", "frame 'next': bad runs index '3' (expected 0 to 2)"),
+        ('"-1" = [[0, "k"]]', "E105", "frame 'next': bad runs index '-1' (expected 0 to 2)"),
+        ('x = [[0, "k"]]', "E105", "frame 'next': bad runs index 'x' (expected 0 to 2)"),
+        ("1 = 7", "E001", NOT_PAIRS),
+        ('1 = "k"', "E001", NOT_PAIRS),
+        ('1 = [1, "k"]', "E001", NOT_PAIRS),
+        ("1 = [[1]]", "E001", NOT_PAIRS),
+        ('1 = [[1, "k", 2]]', "E001", NOT_PAIRS),
+        ('1 = [["1", "k"]]', "E001", NOT_PAIRS),
+        ("1 = [[1, 2]]", "E001", NOT_PAIRS),
+        ('1 = [[1.0, "k"]]', "E001", NOT_PAIRS),
+        ('1 = [[true, "k"]]', "E001", NOT_PAIRS),
+        ('1 = [[1, ""]]', "E001", "frame 'next' row 1: run at col 1 has no pixels"),
+        ('1 = [[2, "kkk"]]', "E103", "frame 'next' row 1: run at col 2 is 3 wide, canvas is 4 wide"),
+        ('1 = [[4, "k"]]', "E103", "frame 'next' row 1: run at col 4 is 1 wide, canvas is 4 wide"),
+        ('1 = [[-1, "k"]]', "E103", "frame 'next' row 1: run at col -1 is 1 wide, canvas is 4 wide"),
+        ('1 = [[1, "k?"]]', "E104", "unknown palette key '?' in frame 'next' row 1, col 2"),
+    ],
+)
+def test_a20_bad_run_is_one_line_at_its_row_and_drops_the_frame(project, form, entry, code, message):
+    body, line = runs_body(form, entry)
+    (sprite,), problems = derived(project, body)
+
+    assert [format_problem(problem, project.root) for problem in problems] == [
+        f"hero.sprite.toml:{line}:1: {code} {message}"
+    ]
+    assert [frame.name for frame in sprite.frames] == ["idle_0"]
+
+
+def test_runs_that_is_not_a_table_is_e001(project):
+    (sprite,), problems = derived(project, 'from = "idle_0"\nruns = [[0, "k"]]\n')
+
+    assert positions(problems) == [(12, 1, "E001")]
+    assert "'next'" in problems[0].message
+    assert [frame.name for frame in sprite.frames] == ["idle_0"]
+
+
+def test_each_bad_run_in_a_row_is_reported(project):
+    _, problems = derived(project, 'runs = { 1 = [[3, "kk"], [0, "?"], [1, "w"]] }\n')
+
+    assert [(problem.line, problem.code, problem.message) for problem in problems] == [
+        (11, "E103", "frame 'next' row 1: run at col 3 is 2 wide, canvas is 4 wide"),
+        (11, "E104", "unknown palette key '?' in frame 'next' row 1, col 0"),
+    ]
+
+
+def test_problems_in_a_runs_only_frame_are_reported_at_the_row_key(project):
+    sprites, problems = load_text(project, 'canvas = "tiny"\n\n[frames.main.runs]\n0 = [[0, "k"]]\n2 = [[1, "?"]]\n')
+
+    assert sprites == []
+    assert positions(problems) == [(5, 1, "E104")]
+
+
+def test_e104_cap_is_shared_by_the_rows_and_runs_of_a_frame(project):
+    body = 'from = "idle_0"\nrows = { 0 = "????", 1 = "????" }\nruns = { 2 = [[0, "????"]] }\n'
+    _, problems = derived(project, body)
+
+    assert positions(problems) == [(12, 1, "E104")] * 8 + [(13, 1, "E104")] * 2 + [(12, 1, "E104")]
+    assert problems[9].message == "unknown palette key '?' in frame 'next' row 2, col 1"
+    assert problems[10].message == "2 more unknown palette keys in frame 'next'"
+
+
+def test_e104_count_line_of_a_frame_without_rows_is_at_its_runs(project):
+    _, problems = derived(project, 'from = "idle_0"\nruns = { 0 = [[0, "????"]], 1 = [[0, "????"]], 2 = [[0, "????"]] }\n')
+
+    assert positions(problems) == [(12, 1, "E104")] * 11
+    assert problems[10].message == "2 more unknown palette keys in frame 'next'"
+
+
 # --- animations -----------------------------------------------------------
 
 # The bad `rows` key is on line 17 and `[anim.idle]` on line 19.
@@ -713,6 +883,11 @@ def test_variant_of_a_file_with_no_good_frame_is_not_produced(project):
         'canvas = "tiny"\n[frames.main]\nfrom = "main"\nrows = { "²" = 1 }\nshift = "x"\nflip = 0\n',
         'canvas = "tiny"\n[frames.main]\nfrom = []\nrows = []\nshift = [[], {}]\n',
         'canvas = "tiny"\n[[frames.main]]\nfrom = "x"\n',
+        'canvas = "tiny"\n[frames.main]\nruns = 3\n',
+        'canvas = "tiny"\n[frames.main]\nruns = { 0 = [[[], {}]], "²" = [], 1 = [[]], 2 = [{}] }\n',
+        'canvas = "tiny"\n[frames.main.runs]\n0 = 3\n',
+        'canvas = "tiny"\n[frames.main.runs]\n0 = [[99999999999999999999, "k"]]\n',
+        'canvas = "tiny"\n[[frames.main.runs]]\n0 = [[0, "k"]]\n',
         TINY + "anim = 3\nvariants = 3\n",
         TINY + "\n[anim]\nidle = 3\n\n[variants]\nred = 3\n",
         TINY + "\n[anim.idle]\nframes = [[]]\nms = []\nloop = []\n\n[variants.red]\nswap = []\n",

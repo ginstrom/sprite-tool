@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import tomllib
 from pathlib import Path
@@ -127,6 +128,37 @@ def test_a4_a_frame_derived_with_rows_renders_as_the_same_frame_written_in_full(
     derived = (out / "warrior__idle_1.png").read_bytes()
     assert derived == (out / "warrior__idle_full.png").read_bytes()
     assert derived != (out / "warrior__idle_0.png").read_bytes()
+
+
+def test_a18_a_frame_given_as_runs_renders_as_the_same_frame_written_as_a_grid(demo):
+    source = demo / "units" / "warrior.sprite.toml"
+    grid = tomllib.loads(source.read_text(encoding="utf-8"))["frames"]["idle_0"].strip("\n").split("\n")
+    lines = ['canvas = "unit"', "", "[frames.main.runs]"]
+    for index, row in enumerate(grid):
+        runs = [[match.start(), match.group()] for match in re.finditer(r"[^.]+", row)]
+        if runs:
+            lines.append(f"{index} = {json.dumps(runs)}")
+    (demo / "units" / "warrior_runs.sprite.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    assert run(demo) == 0
+
+    out = demo / "out" / "frames"
+    assert (out / "warrior_runs.png").read_bytes() == (out / "warrior__idle_0.png").read_bytes()
+
+
+def test_a19_a_frame_derived_with_runs_differs_from_its_parent_in_exactly_the_runs_pixels(demo):
+    source = demo / "units" / "warrior.sprite.toml"
+    edit(source, "[anim.idle]", '[frames.idle_2]\nfrom = "idle_0"\nruns = { 9 = [[13, "rrGGCC"]] }\n\n[anim.idle]')
+
+    assert run(demo) == 0
+
+    out = demo / "out" / "frames"
+    parent = image(out / "warrior__idle_0.png")
+    child = image(out / "warrior__idle_2.png")
+    differing = [
+        (x, y) for y in range(parent.height) for x in range(parent.width) if parent.getpixel((x, y)) != child.getpixel((x, y))
+    ]
+    assert differing == [(x, 9) for x in range(13, 19)]
 
 
 def test_a5_red_variant_is_the_base_with_its_colours_swapped(demo):

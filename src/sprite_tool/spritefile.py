@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -21,7 +21,7 @@ TRANSPARENT = "."
 MAX_E104_PER_FRAME = 10
 
 _TOP_LEVEL_KEYS = ("canvas", "frames", "anim", "variants", "outline", "grounded")
-_FRAME_KEYS = ("from", "rows", "shift", "flip")
+_FRAME_KEYS = ("from", "rows", "runs", "shift", "flip")
 _ANIM_KEYS = ("frames", "ms", "loop")
 _VARIANT_KEYS = ("swap",)
 ID_RE = re.compile(r"[a-z0-9_]+")
@@ -136,21 +136,33 @@ def _is_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _is_run(value: Any) -> bool:
+    """Whether `value` has the shape of a run, `[column, "pixels"]`."""
+    return isinstance(value, list) and len(value) == 2 and _is_int(value[0]) and isinstance(value[1], str)
+
+
 @dataclass(frozen=True)
 class _Derived:
-    """A derived frame whose own fields are valid; `parent` is not resolved yet."""
+    """A frame table whose own fields are valid; `parent` is not resolved yet.
 
-    parent: str
+    With no `parent` the frame starts from a transparent canvas.
+    """
+
+    parent: str | None
     rows: dict[int, str]
+    runs: dict[int, list[tuple[int, str]]]
     shift: tuple[int, int]
     flip: bool
     line: int
 
     def apply(self, parent_rows: tuple[str, ...], canvas: Canvas) -> tuple[str, ...]:
-        """`rows`, then `shift`, then `flip`."""
+        """`rows`, then `runs`, then `shift`, then `flip`."""
         rows = list(parent_rows)
         for index, row in self.rows.items():
             rows[index] = row
+        for index, runs in self.runs.items():
+            for col, text in runs:
+                rows[index] = rows[index][:col] + text + rows[index][col + len(text) :]
 
         dx, dy = self.shift
         if (dx, dy) != (0, 0):
@@ -257,7 +269,7 @@ class _Parser:
                 if derived is not None:
                     pending[name] = derived
             else:
-                self.report("E001", f"frame {name!r} must be a grid string or a table with from", "frames", name)
+                self.report("E001", f"frame {name!r} must be a grid string or a table with from, rows or runs", "frames", name)
         self._resolve(pending, resolved, canvas)
         return resolved
 
@@ -280,7 +292,7 @@ class _Parser:
         return Frame(name=name, rows=tuple(rows), line=first_row, literal=True) if check.ok else None
 
     def _derived(self, name: str, table: dict[str, Any], frames: dict[str, Any], canvas: Canvas) -> _Derived | None:
-        """Check a derived frame's own fields; None if any of them is wrong."""
+        """Check a frame table's own fields; None if any of them is wrong."""
         key = ("frames", name)
         problems_before = len(self.problems)
 
@@ -288,11 +300,20 @@ class _Parser:
             if field not in _FRAME_KEYS:
                 self.report("E001", f"frame {name!r}: unknown field {field!r}", *key, field)
 
+        if not any(field in table for field in ("from", "rows", "runs")):
+            self.report("E001", f"frame {name!r}: needs from, rows or runs", *key)
+
         parent = table.get("from")
-        if not isinstance(parent, str):
-            self.report("E001", f"frame {name!r}: from is required and must be a frame name", *key, "from")
+        if parent is None:
+            pass
+        elif not isinstance(parent, str):
+            self.report("E001", f"frame {name!r}: from must be a frame name", *key, "from")
         elif parent not in frames:
             self.report("E105", f"frame {name!r}: from names unknown frame {parent!r}", *key, "from")
+
+        # One check for `rows` and `runs`, so that they share the frame's E104 cap.
+        check = _RowCheck(self, name, canvas)
+        last = canvas.height - 1
 
         rows: dict[int, str] = {}
         overrides = table.get("rows", {})
@@ -300,10 +321,8 @@ class _Parser:
         if not isinstance(overrides, dict):
             self.report("E001", f"frame {name!r}: rows must be a table of row index to row", *key, "rows")
         else:
-            check = _RowCheck(self, name, canvas)
             for index_text, row in overrides.items():
-                if not _ROW_INDEX_RE.fullmatch(index_text) or int(index_text) >= canvas.height:
-                    last = canvas.height - 1
+                if not _ROW_INDEX_RE.fullmatch(index_text) or int(index_text) > last:
                     message = f"frame {name!r}: bad rows index {index_text!r} (expected 0 to {last})"
                     self.report_at(rows_line, 1, "E105", message)
                 elif not isinstance(row, str):
@@ -311,7 +330,28 @@ class _Parser:
                 else:
                     check.row(int(index_text), row, None, rows_line)
                     rows[int(index_text)] = row
-            check.finish(rows_line)
+
+        runs: dict[int, list[tuple[int, str]]] = {}
+        placed = table.get("runs", {})
+        runs_line = self.line(*key, "runs") or 1
+        if not isinstance(placed, dict):
+            message = f'frame {name!r}: runs must be a table of row index to a list of [column, "pixels"] pairs'
+            self.report("E001", message, *key, "runs")
+        else:
+            for index_text, row_runs in placed.items():
+                # The row's own key in the table form, the `runs` key in the inline form.
+                row_line = self.line(*key, "runs", index_text) or 1
+                if not _ROW_INDEX_RE.fullmatch(index_text) or int(index_text) > last:
+                    message = f"frame {name!r}: bad runs index {index_text!r} (expected 0 to {last})"
+                    self.report_at(row_line, 1, "E105", message)
+                elif not isinstance(row_runs, list) or not all(_is_run(run) for run in row_runs):
+                    message = f'frame {name!r} row {index_text}: runs must be a list of [column, "pixels"] pairs'
+                    self.report_at(row_line, 1, "E001", message)
+                else:
+                    for col, text in row_runs:
+                        check.run(int(index_text), col, text, row_line)
+                    runs[int(index_text)] = [(col, text) for col, text in row_runs]
+        check.finish(rows_line if "rows" in table else runs_line)
 
         shift = table.get("shift", [0, 0])
         if not isinstance(shift, list) or len(shift) != 2 or not all(_is_int(item) for item in shift):
@@ -323,14 +363,16 @@ class _Parser:
 
         if len(self.problems) > problems_before:
             return None
-        line = self.line(*key, "rows") if "rows" in table else self.line(*key)
-        return _Derived(parent=parent, rows=rows, shift=(shift[0], shift[1]), flip=flip, line=line)
+        # A frame written only as `[frames.<name>.runs]` has no line of its own.
+        line = self.line(*key, "rows") if "rows" in table else self.line(*key) or self.line(*key, "runs")
+        return _Derived(parent=parent, rows=rows, runs=runs, shift=(shift[0], shift[1]), flip=flip, line=line)
 
     def _resolve(self, pending: dict[str, _Derived], resolved: dict[str, Frame | None], canvas: Canvas) -> None:
         """Fill `resolved` for the derived frames in `pending`, parents first.
 
-        A frame whose `from` chain reaches a failed frame stays None without a
-        problem of its own. A cycle is reported once, at its first frame in
+        A frame with no `from` starts from a transparent canvas. A frame whose
+        `from` chain reaches a failed frame stays None without a problem of
+        its own. A cycle is reported once, at its first frame in
         file order.
         """
         order = {name: index for index, name in enumerate(resolved)}
@@ -353,9 +395,13 @@ class _Parser:
 
             for child in reversed(chain):
                 derived = pending[child]
-                parent = resolved[derived.parent]
-                if parent is not None:
-                    rows = derived.apply(parent.rows, canvas)
+                if derived.parent is None:
+                    base: tuple[str, ...] | None = (TRANSPARENT * canvas.width,) * canvas.height
+                else:
+                    parent = resolved[derived.parent]
+                    base = parent.rows if parent is not None else None
+                if base is not None:
+                    rows = derived.apply(base, canvas)
                     resolved[child] = Frame(
                         name=child,
                         rows=rows,
@@ -448,7 +494,7 @@ def _variant(base: Sprite, name: str, swap: dict[int, str]) -> Sprite:
 
 
 class _RowCheck:
-    """Reports E103 and E104 for the rows of one frame, capping E104."""
+    """Reports the problems in the rows and runs of one frame, capping E104."""
 
     def __init__(self, parser: _Parser, frame: str, canvas: Canvas) -> None:
         self.parser = parser
@@ -472,14 +518,21 @@ class _RowCheck:
             message = f"{where}: {len(text)} wide, expected {self.width}"
             self._report(line, col, fallback_line, "E103", message)
 
-        for offset, key in enumerate(stripped):
-            if key == TRANSPARENT or key in self.parser.project.palette:
-                continue
-            self.unknown_keys += 1
-            if self.unknown_keys <= MAX_E104_PER_FRAME:
-                message = f"unknown palette key {key!r}" + ("" if line else f" in {where}")
-                self._report(line, offset + 1, fallback_line, "E104", message)
-            self.ok = False
+        for offset, key in self._unknown(stripped):
+            message = f"unknown palette key {key!r}" + ("" if line else f" in {where}")
+            self._report(line, offset + 1, fallback_line, "E104", message)
+
+    def run(self, index: int, col: int, text: str, line: int) -> None:
+        """Check one run of row `index`, starting at column `col`, reporting at `line`."""
+        where = f"frame {self.frame!r} row {index}"
+        if not text:
+            self._report(None, 1, line, "E001", f"{where}: run at col {col} has no pixels")
+        elif col < 0 or col + len(text) > self.width:
+            message = f"{where}: run at col {col} is {len(text)} wide, canvas is {self.width} wide"
+            self._report(None, 1, line, "E103", message)
+
+        for offset, key in self._unknown(text):
+            self._report(None, 1, line, "E104", f"unknown palette key {key!r} in {where}, col {col + offset}")
 
     def finish(self, line: int) -> None:
         """Report how many E104 problems the cap left out, at `line`."""
@@ -487,6 +540,16 @@ class _RowCheck:
         if extra > 0:
             noun = "key" if extra == 1 else "keys"
             self.parser.report_at(line, 1, "E104", f"{extra} more unknown palette {noun} in frame {self.frame!r}")
+
+    def _unknown(self, text: str) -> Iterator[tuple[int, str]]:
+        """Count the unknown keys in `text`, yielding each one under the cap with its offset."""
+        for offset, key in enumerate(text):
+            if key == TRANSPARENT or key in self.parser.project.palette:
+                continue
+            self.ok = False
+            self.unknown_keys += 1
+            if self.unknown_keys <= MAX_E104_PER_FRAME:
+                yield offset, key
 
     def _report(self, line: int | None, col: int, fallback_line: int, code: str, message: str) -> None:
         self.ok = False
