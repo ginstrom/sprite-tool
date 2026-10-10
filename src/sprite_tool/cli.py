@@ -11,6 +11,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import check, manifest, render, spritefile
+from . import preview as preview_module
 from . import guide as guide_module
 from . import project as project_module
 from .export import EXPORTERS
@@ -254,13 +255,66 @@ def _build(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+PREVIEW_DIR = ".preview"
+
+
+def _preview(args: argparse.Namespace) -> int:
+    project, sprites, problems = load_checked(args)
+    if any(problem.path == project.palette_path and _is_error(problem) for problem in problems):
+        report(problems, project.root)
+        return EXIT_CHECK_FAILED
+
+    by_id = {sprite.id: sprite for sprite in sprites}
+    # A file too broken to give a sprite is still a known id: its problems are reported.
+    files = {path.name.removesuffix(spritefile.SUFFIX): path for path in spritefile.discover(project.root)}
+    ids = list(dict.fromkeys(args.ids))
+    involved = set()
+    for name in [*ids, *([args.on] if args.on else [])]:
+        if name in by_id:
+            involved.add(by_id[name].source)
+        elif name in files:
+            involved.add(files[name])
+        else:
+            return _usage_error(f"unknown sprite id {name!r}")
+    sheet = args.sheet or not ids
+    if not sheet:
+        problems = [problem for problem in problems if problem.path in involved]
+    if any(_is_error(problem) for problem in problems):
+        report(problems, project.root)
+        return EXIT_CHECK_FAILED
+
+    images = {}
+    for name in ids:
+        sprite = by_id[name]
+        if args.on:
+            scale = args.scale or preview_module.ON_TILE_SCALE
+            images[name] = preview_module.on_tile(project, sprite, by_id[args.on], scale)
+        else:
+            variants = [other for other in sprites if other.variant_of == name]
+            scale = args.scale or project.preview.scale
+            images[name] = preview_module.sprite_preview(project, sprite, variants, scale, args.grid)
+    if sheet:
+        images["sheet"] = preview_module.contact_sheet(project, sprites)
+
+    directory = project.root / PREVIEW_DIR
+    try:
+        directory.mkdir(exist_ok=True)
+        for name, image in images.items():
+            image.save(directory / f"{name}.png")
+    except OSError as exc:
+        return _usage_error(f"cannot write preview: {exc}")
+    for name in images:
+        print(_from_cwd(directory / f"{name}.png", project.root))
+    return EXIT_OK
+
+
 # One handler per subcommand. Each takes the parsed arguments and returns the exit code.
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "init": _init,
     "guide": _guide,
     "new": _new,
     "check": _check,
-    "preview": _not_implemented,
+    "preview": _preview,
     "build": _build,
     "import": _not_implemented,
 }
