@@ -1,0 +1,164 @@
+# sprite-tool implementation plan
+
+- **Source design:** [docs/designs/sprite-tool.md](../../designs/sprite-tool.md) at commit `4b72dd4`
+- **Plan written:** 2026-10-10
+- **Repository state when planned:** design, `README.md`, `LICENSE` (MIT) and `.gitignore` only. No code, no tests, no `pyproject.toml`.
+
+## Purpose and scope
+
+Build `sprite-tool`, a Python command-line tool (`sprite`) that turns text sprite
+definitions into pixel art for Godot 4 and Phaser games. This plan covers the
+whole design: seven commands (`init`, `guide`, `new`, `check`, `preview`,
+`build`, `import`), three export targets (`frames`, `phaser`, `godot`), the
+example project in `examples/demo/`, golden files and documentation.
+
+Out of scope (design non-goals): drawing helpers, GUI, watch mode, frame
+trimming, tilemap export, rotation or advanced packing, other engines, and any
+change to the two game repositories.
+
+## Shared constraints
+
+Every task file repeats the ones that apply to it.
+
+- **Stack.** Python 3.11 or later. One runtime dependency, Pillow, pinned to `>=12.3,<12.4`. `argparse` for the CLI. `pytest` is the only dev dependency. Nothing else may be added (Q3).
+- **Tests.** `make test` runs `uv run pytest`. No test may need a display or the network. Tests write only under pytest's `tmp_path`; they never write into `examples/demo/` or `tests/golden/`.
+- **Output.** Success prints one summary line. Each problem is one line on stdout. No colour, banners or progress output (Q2). Exit codes: `0` success, `1` check failures, `2` usage or config error (message on stderr).
+- **Determinism.** Same inputs give byte-identical PNG, JSON and `.tres` files. Sorted iteration everywhere; no timestamps, absolute paths or tool version in generated files (Q1). Previews are exempt.
+- **Safe writes.** Export files are only created, overwritten or deleted through the manifest (Q4).
+
+## Tasks
+
+| Step | Task | Outcome | Depends on | Status |
+|---|---|---|---|---|
+| 01 | [Scaffold, model and project loading](01-scaffold-model-project.md) | Installable package, `sprite` CLI skeleton with all subcommands declared, data model, config and palette loading | none | in progress |
+| 02 | [Sprite file parser](02-sprite-file-parser.md) | `*.sprite.toml` parsed into sprites with derived frames, variants and source positions | 01 | pending |
+| 03 | [Checks, `check` command and demo project](03-checks-and-demo.md) | Style and PNG checks, working `sprite check`, `examples/demo/` sources | 02 | pending |
+| 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | pending |
+| 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | pending |
+| 06 | [Phaser export](06-phaser-export.md) | `phaser` target: sheet, JSON Hash atlas, animation JSON | 05 | pending |
+| 07 | [Godot export](07-godot-export.md) | `godot` target: sheet, `SpriteFrames` `.tres` per sprite, index JSON | 05 | pending |
+| 08 | [Preview](08-preview.md) | `sprite preview` for sprites, `--grid`, `--on`, contact sheet | 03, 04 | pending |
+| 09 | [`init`, `new` and `guide`](09-init-new-guide.md) | Project scaffolding, blank sprite scaffolding, agent reference text | 05 | pending |
+| 10 | [Import](10-import.md) | `sprite import` with `--scale` and `--snap` | 03, 04 | pending |
+| 11 | [Golden files, documentation and acceptance](11-golden-docs-acceptance.md) | Golden output, determinism and speed tests, README and AGENTS.md, manual acceptance | 06, 07, 08, 09, 10 | pending |
+
+## Execution order
+
+The immediate use is Phaser (author, 2026-10-10), so the order reaches a usable
+Phaser export first. Godot stays in scope and follows.
+
+**Phaser milestone**
+
+1. **01**
+2. **02** and **04** can run in parallel (no shared files beyond what 01 created).
+3. **03** (needs 02).
+4. **05** (needs 03 and 04).
+5. **06**, including its in-engine Phaser check. The tool is usable in yomi from here, with a hand-written config.
+6. **09** (`init`, `new`, `guide`) and **08** (preview), which complete the agent drawing loop.
+
+**After the milestone**
+
+7. **10** (import), then **07** (Godot).
+8. **11** last.
+
+Steps 06 to 10 are independent of each other and may run in parallel if
+capacity allows; 08 and 10 need only 03 and 04.
+
+**Coordination for parallel work.** Step 01 declares every subcommand and flag in
+`cli.py` with a stub handler, so later steps only replace their own handler.
+Steps 06 and 07 each add one line to the exporter registry in
+`src/sprite_tool/export/__init__.py` and one `[[export]]` block to
+`examples/demo/sprite-tool.toml`; expect a trivial merge there.
+
+**Integration checkpoints.**
+
+- After 05: `uv run sprite build --project examples/demo` exits 0 and writes loose PNGs.
+- After 06 (Phaser milestone): the same command also writes the Phaser atlas, and the atlas has been loaded and played in a scratch copy of yomi.
+- After 07: the same command writes all three targets, and running it twice changes nothing.
+- After 11: `make check` passes from a clean clone.
+
+## Requirement mapping
+
+| Requirement | Steps |
+|---|---|
+| R1 palette file | 01, 03 (W001) |
+| R2 canvas classes, mixed sizes | 01, 02, 05, 11 (A14) |
+| R3 sprite text files | 02 |
+| R4 derived frames | 02 |
+| R5 palette-swap variants | 02, 03, 05 |
+| R6 `check` for sprite files and PNGs | 02, 03 |
+| R7 `build` and export targets | 05, 06, 07 |
+| R8 deterministic packing with padding | 04 |
+| R9 previews and contact sheet | 08 |
+| R10 `new` and `import` | 09, 10 |
+| R11 `guide` | 09 |
+| R12 `init` | 09 |
+| Q1 deterministic output | 04, 05, 06, 07, 11 |
+| Q2 token-friendly output | 01, 03, and every command step |
+| Q3 thin | 01 |
+| Q4 safe writes | 05 |
+| Q5 200 sprites in under 2 s | 11 |
+
+| Acceptance criterion | Steps |
+|---|---|
+| A1 init then build | 09 |
+| A2 palette change re-renders | 05 |
+| A3 three problems with positions | 03 |
+| A4 derived frame equals full grid | 02 |
+| A5 `red` variant in every target | 05, 06, 07 |
+| A6 Phaser export loads | 06 (structure and manual) |
+| A7 Godot export loads | 07 (headless), 11 (manual) |
+| A8 two builds byte-identical | 11 |
+| A9 `preview warrior` | 08 |
+| A10 import round trip | 10 |
+| A11 PNG check | 03 |
+| A12 deleted sprite cleaned up | 05 |
+| A13 guide under 60 lines | 09 |
+| A14 mixed sizes in one atlas, E103 | 03, 06, 07, 11 |
+| A15 `preview --on` | 08 |
+
+## Decisions made while planning
+
+The design leaves these points open or inconsistent. None blocks work; each has
+a default that the task files use. Change the default here and in the named
+step if you disagree.
+
+| ID | Point | Default used in this plan | Steps |
+|---|---|---|---|
+| P1 | **A3 against section 5.4.** A3 asks for three problems from one grid (row too long, unknown key, missing outline pixel). Section 5.4 says a frame that fails to resolve is dropped from later checks, so the outline check never sees that grid. | Follow 5.4. The A3 fixture is one sprite file: the long row and the unknown key are in one grid, the missing outline pixel is in a second frame. | 02, 03 |
+| P2 | **`init` file count.** The command writes four files (config, palette, sprite, `.gitignore`) but its output is given as `(3 files)`. | Print `created <dir> (3 files)`; `.gitignore` is not counted. | 09 |
+| P3 | **`init` directory and export.** A1 runs `init` then `build` in one empty directory, so `init` must default to `.` and the template must have an export that stays inside it. | `dir` defaults to `.`; the template has one `frames` export with `out = "out"`. | 09 |
+| P4 | **Where `padding` is set.** The design gives a default of 1 but no config key. | Optional integer `padding` on `phaser` and `godot` export tables. | 01, 04 |
+| P5 | **Exit code for a bad palette.** E002 is a check code (exit 1), but config errors exit 2. | A bad `sprite-tool.toml` exits 2. A bad `palette.toml` prints E001/E002 lines and exits 1, and sprites are not checked in that run. | 01, 03 |
+| P6 | **Data model gaps.** Section 5.3 has no `display_scale`, no source position on frames, and no link from a variant to its base sprite, all of which other sections need. | Add `Canvas.display_scale`, `Frame.line`, `Frame.literal`, `Sprite.variant_of`, and `Project`, `ExportTarget`, `PreviewConfig` dataclasses. | 01 |
+| P7 | **Checks on variants.** Running every check on each variant repeats the same problem once per variant. | Variant sprites get only E003 and E201. | 03 |
+| P8 | **Packer order.** The packer is given no frame index, but must order by frame order in the file. | Callers pass frames in file order; the packer sorts stably by height then sprite id. | 04 |
+| P9 | **Lines without a position.** No format is given for problems that have no line (E401, a missing file). | `path: CODE message`. `build --check` prints `up to date: N sprites, M frames, T targets` on success. | 01, 05 |
+| P10 | **Phaser per-frame `duration`.** Older Phaser 3 releases add it to the base frame time instead of replacing it. The design also asks to confirm that `pivot` is read. | Write what the design specifies; confirm both in Phaser 4 in step 06's in-engine check and adjust the exporter if needed. | 06 |
+| P11 | **Godot `default` animation.** `loop` is not specified for sprites with no animations. | `loop` is `true`. | 07 |
+| P12 | **Golden file layout.** | Demo targets write to `examples/demo/out/{frames,phaser,godot}` (gitignored). Golden copies live in `tests/golden/{frames,phaser,godot}` and are regenerated with `make golden`. | 05, 11 |
+
+## Overall completion criteria
+
+- `make check` passes from a clean clone with `uv` installed.
+- Every acceptance criterion A1 to A15 has an automated test, apart from the in-engine halves of A6 (recorded in step 06) and A7 (recorded in step 11).
+- `uv run sprite build --project examples/demo` run twice leaves `git status` clean.
+- `pyproject.toml` lists Pillow as the only runtime dependency and `uv.lock` is committed.
+- Every row in the task table is `done`, with evidence recorded below.
+
+## Blockers and open questions
+
+No blockers. The design's two non-blocking questions (larger unit classes, pixel
+density) are art decisions and need no work here.
+
+## For implementers
+
+After working on a task, update its row in the task table (`in progress`,
+`done` or `blocked`) and add a line under **Completion log** with the date, the
+commit, and the evidence (the test command and its result), or the blocker.
+If you depart from a default in **Decisions made while planning**, record it
+there.
+
+## Completion log
+
+(none yet)
