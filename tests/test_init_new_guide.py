@@ -184,15 +184,27 @@ def test_new_writes_a_blank_unit_and_prints_its_path(project, capsys):
     assert text.endswith('"""\n')
 
 
-def test_a_new_sprite_fails_check_with_e106_only(project, capsys):
+def test_a_new_sprite_checks_with_a_blank_warning_only(project, capsys):
     assert main(["new", "kobold", "--canvas", "unit", "--dir", "units"]) == 0
     path = capsys.readouterr().out.strip()
 
-    assert main(["check", path]) == 1
+    assert main(["check", path]) == 0
     assert capsys.readouterr().out.splitlines() == [
-        "units/kobold.sprite.toml:5:1: E106 frame 'main' is fully transparent",
-        "1 error, 0 warnings in 1 file",
+        "units/kobold.sprite.toml:5:1: W003 sprite 'kobold' is blank (nothing drawn yet); it is left out of the build",
+        "ok: 1 sprite, 1 frame",
     ]
+
+
+def test_a_new_sprite_does_not_stop_the_build_and_is_not_exported(project, capsys):
+    assert main(["new", "kobold", "--canvas", "unit"]) == 0
+    capsys.readouterr()
+
+    assert main(["build"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "kobold.sprite.toml:5:1: W003 sprite 'kobold' is blank (nothing drawn yet); it is left out of the build",
+        "built: 2 sprites, 4 frames, 1 target",
+    ]
+    assert not list((project / "out").glob("kobold*"))
 
 
 def test_new_tile_is_16_rows_of_16_in_the_project_root(project, capsys):
@@ -320,7 +332,13 @@ def test_guide_prints_exactly_guide_text(capsys):
         "count from 0",
         "sprite new <id> --canvas <class>",
         "sprite check",
-        "sprite preview <id> --grid",
+        "sprite preview <id>... [--grid]",
+        "sprite preview <id> --on <tile-id>",
+        "sprite import <png> --canvas <class>",
+        "facing right",
+        "anchor x,y:",
+        "default frame is",
+        "[frames.idle_1.rows]",
         "sprite build",
     ],
 )

@@ -215,7 +215,26 @@ def test_given_file_is_resolved_against_the_current_directory(root, capsys, monk
     monkeypatch.chdir(root / "units")
     code = main(["check", "hero.sprite.toml"])
     assert code == 1
-    assert capsys.readouterr().out.startswith("units/hero.sprite.toml:7:5: E201")
+    # Shown from the current directory, so the path can be passed straight back.
+    assert capsys.readouterr().out.startswith("hero.sprite.toml:7:5: E201")
+
+
+def test_paths_are_shown_from_a_directory_above_the_project(root, capsys, monkeypatch):
+    write(root, "units/hero.sprite.toml", NO_OUTLINE)
+    monkeypatch.chdir(root.parent)
+    assert main(["check"]) == 1
+    assert capsys.readouterr().out.startswith(f"{root.name}/units/hero.sprite.toml:7:5: E201")
+
+
+def test_two_projects_below_the_current_directory_is_a_usage_error(root, capsys, monkeypatch, tmp_path_factory):
+    other = root.parent / "other"
+    other.mkdir()
+    (other / "sprite-tool.toml").write_text((root / "sprite-tool.toml").read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.chdir(root.parent)
+    assert main(["check"]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("error: more than one project below")
+    assert f"other, {root.name} (use --project <dir>)" in err
 
 
 def test_given_file_still_finds_duplicate_ids_in_other_files(root, capsys):

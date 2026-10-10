@@ -103,8 +103,85 @@ def test_fully_transparent_frame_is_e106_at_its_first_row(project):
 
 
 def test_fully_transparent_frame_is_not_also_ungrounded(project):
-    text = 'canvas = "unit"\n\n[frames]\nempty = """\n.....\n.....\n.....\n.....\n"""\n'
+    text = HERO + 'empty = """\n.....\n.....\n.....\n.....\n"""\n'
     assert [problem.code for problem in run_text(project, text)] == ["E106"]
+
+
+# --- W003 blank sprite ---------------------------------------------------------
+
+BLANK = 'canvas = "unit"\n\n[frames]\nmain = """\n.....\n.....\n.....\n.....\n"""\n'
+
+
+def test_sprite_with_nothing_drawn_is_w003_only(project):
+    problems = run_text(project, BLANK + '[frames.other]\nfrom = "main"\n')
+    assert positions(problems) == [(5, 1, "W003")]
+    assert problems[0].message == "sprite 'hero' is blank (nothing drawn yet); it is left out of the build"
+
+
+def test_is_blank(project):
+    sprites, _ = load_all(project, [write_sprite(project, BLANK), write_sprite(project, HERO, "drawn.sprite.toml")])
+    assert {sprite.id: check.is_blank(sprite) for sprite in sprites} == {"drawn": False, "hero": True}
+
+
+# --- E201 in derived frames ----------------------------------------------------
+
+# Row 1 ends in `w`, which touches the canvas edge: one fault at row 1, col 4.
+FAULTY = 'canvas = "unit"\n\n[frames]\nidle_0 = """\n.kkk.\nkwwww\nkbbbk\n.kkk.\n"""\n'
+
+
+def test_fault_carried_into_derived_frames_is_reported_once(project):
+    text = FAULTY + (
+        '[frames.same]\nfrom = "idle_0"\n'
+        '[frames.flipped]\nfrom = "idle_0"\nflip = true\n'
+        '[frames.chained]\nfrom = "flipped"\nrows = { 2 = "kbbbk" }\n'
+    )
+    assert positions(run_text(project, text)) == [(6, 5, "E201")]
+
+
+def test_fault_a_derived_frame_adds_is_still_reported(project):
+    text = HERO + '[frames.idle_1]\nfrom = "idle_0"\nrows = { 1 = "kwwww" }\n'
+    problems = run_text(project, text)
+    assert [problem.code for problem in problems] == ["E201"]
+    assert "frame 'idle_1' row 1, col 4" in problems[0].message
+
+
+def test_fault_a_shift_exposes_is_still_reported(project):
+    """Shifted right, the `w` of row 1 lands on the canvas edge, where the parent had `k`."""
+    text = HERO + '[frames.idle_1]\nfrom = "idle_0"\nshift = [1, 0]\n'
+    messages = [problem.message for problem in run_text(project, text) if problem.code == "E201"]
+    assert len(messages) == 2  # rows 1 and 2, col 4
+    assert all("frame 'idle_1'" in message and "col 4" in message for message in messages)
+
+
+def test_shifted_copy_of_a_fault_is_not_reported_again(project):
+    # The fault moves from col 3 to col 2 with the shift.
+    text = 'canvas = "unit"\n\n[frames]\nidle_0 = """\n.kkk.\n.kkw.\n.kkk.\n.kkk.\n"""\n'
+    text += '[frames.idle_1]\nfrom = "idle_0"\nshift = [-1, 0]\n'
+    assert positions(run_text(project, text)) == [(6, 4, "E201")]
+
+
+# --- E003 loose PNG names ------------------------------------------------------
+
+
+def test_sprite_id_that_is_another_sprites_frame_file_is_e003(project):
+    hero = write_sprite(project, HERO + '[frames.idle_1]\nfrom = "idle_0"\n')
+    clash = write_sprite(project, HERO, "hero__idle_1.sprite.toml")
+    sprites, problems = load_all(project, [hero, clash])
+    problems += check.run(project, sprites)
+    assert [(problem.path, problem.code, problem.message) for problem in problems] == [
+        (
+            clash,
+            "E003",
+            "sprite id 'hero__idle_1' clashes with frame 'idle_1' of sprite 'hero' (both export as hero__idle_1.png)",
+        )
+    ]
+
+
+def test_single_frame_sprite_writes_no_frame_files_so_nothing_clashes(project):
+    sprites, problems = load_all(
+        project, [write_sprite(project, HERO), write_sprite(project, HERO, "hero__idle_0.sprite.toml")]
+    )
+    assert problems + check.run(project, sprites) == []
 
 
 # --- E201 outline -------------------------------------------------------------

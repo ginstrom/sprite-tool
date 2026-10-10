@@ -34,9 +34,17 @@ def load_project(args: argparse.Namespace) -> tuple[Project, list[Problem]]:
     else:
         root = project_module.find_project(Path.cwd())
         if root is None:
-            raise ConfigError(
-                f"no {CONFIG_NAME} found in {Path.cwd()} or any parent directory (use --project <dir>)"
-            )
+            # Not inside a project: the usual case is the game repository's
+            # root, with the project in a directory below it.
+            below = project_module.find_below(Path.cwd())
+            if len(below) > 1:
+                found = ", ".join(_from_cwd(path, path) for path in below)
+                raise ConfigError(f"more than one project below {Path.cwd()}: {found} (use --project <dir>)")
+            if not below:
+                raise ConfigError(
+                    f"no {CONFIG_NAME} found in {Path.cwd()}, any parent directory or below it (use --project <dir>)"
+                )
+            root = below[0]
     return project_module.load(root)
 
 
@@ -67,7 +75,7 @@ def report(problems: Iterable[Problem], root: Path) -> int:
     """
     problems = sorted(problems, key=_output_order)
     for problem in problems:
-        print(format_problem(problem, root))
+        print(format_problem(problem, root, Path.cwd()))
     errors = sum(1 for problem in problems if _is_error(problem))
     if errors:
         warnings = len(problems) - errors
@@ -132,7 +140,7 @@ def _guide(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-_SPRITE_ID_RE = re.compile(r"[a-z0-9_]+")
+_SPRITE_ID_RE = spritefile.ID_RE
 
 
 def _new(args: argparse.Namespace) -> int:
@@ -231,6 +239,8 @@ def _build(args: argparse.Namespace) -> int:
         report(problems, project.root)
         return EXIT_CHECK_FAILED
 
+    # A sprite that is still blank has its warning and is not exported.
+    sprites = [sprite for sprite in sprites if not check.is_blank(sprite)]
     # Nothing is written until every directory has passed its checks.
     images = render.render_all(sprites, project.palette)
     plans = manifest.plan(
@@ -252,6 +262,10 @@ def _build(args: argparse.Namespace) -> int:
 
 
 PREVIEW_DIR = ".preview"
+# Problems that leave a frame drawable. A preview is still written with these,
+# because seeing the sprite is how they get fixed.
+_STYLE_CODES = frozenset({"E106", "E201", "E202"})
+_MAX_PREVIEW_STEM = 100
 
 
 def _preview(args: argparse.Namespace) -> int:
@@ -271,24 +285,37 @@ def _preview(args: argparse.Namespace) -> int:
         elif name in files:
             involved.add(files[name])
         else:
-            return _usage_error(f"unknown sprite id {name!r}")
+            known = ", ".join(sorted(by_id)) or "none"
+            return _usage_error(f"unknown sprite id {name!r} (sprites: {known})")
     sheet = args.sheet or not ids
     if not sheet:
         problems = [problem for problem in problems if problem.path in involved]
-    if any(_is_error(problem) for problem in problems):
+    errors = [problem for problem in problems if _is_error(problem)]
+    if errors:
+        # Warnings are printed only alongside an error, so a clean run prints paths only.
         report(problems, project.root)
-        return EXIT_CHECK_FAILED
+        if any(problem.code not in _STYLE_CODES for problem in errors):
+            return EXIT_CHECK_FAILED
 
     images = {}
-    for name in ids:
-        sprite = by_id[name]
+    if ids:
         if args.on:
+            kind = f"on-{args.on}"
             scale = args.scale or preview_module.ON_TILE_SCALE
-            images[name] = preview_module.on_tile(project, sprite, by_id[args.on], scale)
+            parts = [preview_module.on_tile(project, by_id[name], by_id[args.on], scale) for name in ids]
         else:
-            variants = [other for other in sprites if other.variant_of == name]
+            kind = "grid" if args.grid else "plain"
             scale = args.scale or project.preview.scale
-            images[name] = preview_module.sprite_preview(project, sprite, variants, scale, args.grid)
+            parts = [
+                preview_module.sprite_preview(
+                    project, by_id[name], [other for other in sprites if other.variant_of == name], scale, args.grid
+                )
+                for name in ids
+            ]
+        stem = "+".join(ids)
+        if len(stem) > _MAX_PREVIEW_STEM:
+            stem = f"{ids[0]}+{len(ids) - 1}more"
+        images[f"{stem}.{kind}"] = preview_module.stack(project, parts)
     if sheet:
         images["sheet"] = preview_module.contact_sheet(project, sprites)
 
@@ -388,11 +415,16 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--canvas", metavar="<class>", help="canvas class for PNG paths")
 
     preview = commands.add_parser("preview", parents=[in_project], help="write preview PNGs")
-    preview.add_argument("ids", nargs="*", metavar="id", help="sprite ids to preview (default: contact sheet)")
+    preview.add_argument(
+        "ids",
+        nargs="*",
+        metavar="id",
+        help="sprite ids to draw, one under another in a single image (default: the contact sheet)",
+    )
     preview.add_argument("--scale", type=_positive_int, metavar="N", help="upscale factor")
-    preview.add_argument("--grid", action="store_true", help="draw a pixel grid")
-    preview.add_argument("--on", metavar="<tile-id>", help="draw the sprite on top of this tile sprite")
-    preview.add_argument("--sheet", action="store_true", help="write the contact sheet")
+    preview.add_argument("--grid", action="store_true", help="draw a pixel grid; writes <ids>.grid.png, not <ids>.plain.png")
+    preview.add_argument("--on", metavar="<tile-id>", help="draw each sprite standing on this tile; writes <ids>.on-<tile-id>.png")
+    preview.add_argument("--sheet", action="store_true", help="also write the contact sheet, sheet.png")
 
     build = commands.add_parser("build", parents=[in_project], help="check everything, then write every export target")
     build.add_argument("--check", action="store_true", help="write nothing; exit 1 if generated files are missing or stale")

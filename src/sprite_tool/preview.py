@@ -57,6 +57,25 @@ def sprite_preview(
     return image
 
 
+def stack(project: Project, images: Iterable[Image.Image]) -> Image.Image:
+    """The images one under another, left aligned, on the preview background.
+
+    Each already has its own margin, so nothing is added between them. One
+    image is returned as it is.
+    """
+    images = list(images)
+    if len(images) == 1:
+        return images[0]
+    result = Image.new(
+        "RGBA", (max(image.width for image in images), sum(image.height for image in images)), project.preview.background
+    )
+    y = 0
+    for image in images:
+        result.paste(image, (0, y))
+        y += image.height
+    return result
+
+
 def on_tile(project: Project, sprite: Sprite, tile: Sprite, scale: int) -> Image.Image:
     """The default frame of `sprite` standing on the default frame of `tile`.
 

@@ -42,6 +42,33 @@ def find_project(start: Path) -> Path | None:
     return None
 
 
+_SEARCH_DEPTH = 3
+_SKIPPED_DIRECTORIES = frozenset({"node_modules"})
+
+
+def find_below(start: Path, depth: int = _SEARCH_DEPTH) -> list[Path]:
+    """The project directories up to `depth` levels below `start`, sorted.
+
+    Hidden directories and `node_modules` are not entered, and neither is a
+    project once found.
+    """
+    found: list[Path] = []
+    if depth < 1:
+        return found
+    try:
+        children = sorted(path for path in start.resolve().iterdir() if path.is_dir())
+    except OSError:
+        return found
+    for child in children:
+        if child.name.startswith(".") or child.name in _SKIPPED_DIRECTORIES:
+            continue
+        if (child / CONFIG_NAME).is_file():
+            found.append(child)
+        else:
+            found += find_below(child, depth - 1)
+    return found
+
+
 def load(root: Path) -> tuple[Project, list[Problem]]:
     """Load the project in `root`.
 

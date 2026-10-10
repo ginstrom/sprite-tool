@@ -49,7 +49,7 @@ sprite guide             # the file format, this project's palette and canvas cl
 sprite new archer --canvas unit
 # draw in archer.sprite.toml
 sprite check             # list problems; fix them until it prints `ok`
-sprite preview archer --grid   # writes .preview/archer.png to look at
+sprite preview archer --grid   # writes .preview/archer.grid.png to look at
 sprite build             # check everything, then write the game's files
 ```
 
@@ -61,7 +61,10 @@ agent needs to read before adding a sprite.
 A project is a directory with `sprite-tool.toml` (canvas classes, preview
 settings and export targets), `palette.toml`, and any number of
 `<id>.sprite.toml` files in it or its subdirectories. Commands find the
-project from the current directory or from `--project <dir>`.
+project from the current directory: in it, above it, or, when there is exactly
+one, up to three levels below it, so they work from the game repository's
+root. `--project <dir>` names it outright. Paths in the output are relative to
+the current directory.
 [examples/demo/](examples/demo/) is a small complete one.
 
 ## Commands
@@ -72,7 +75,7 @@ project from the current directory or from `--project <dir>`.
 | `sprite guide` | Print the format reference, palette and canvas classes. |
 | `sprite new <id> --canvas <class> [--dir <subdir>]` | Write a blank sprite file. |
 | `sprite check [<file>...] [--canvas <class>]` | Check every sprite file, or the given sprite files and PNGs. |
-| `sprite preview [<id>...] [--grid] [--scale N] [--on <tile-id>] [--sheet]` | Write preview PNGs to `.preview/`. With no id, a contact sheet of every sprite. |
+| `sprite preview [<id>...] [--grid] [--scale N] [--on <tile-id>] [--sheet]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. |
 | `sprite build [--check] [--adopt]` | Check everything, then write every export target. |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. |
 
@@ -80,6 +83,31 @@ Output is meant to be cheap to read. Success prints one summary line. Each
 problem is one line, `path:line:col: CODE message`. There is no colour and no
 progress output. Exit codes are `0` for success, `1` for check failures and
 `2` for a usage or configuration error (`error: <message>` on stderr).
+
+### Previews
+
+`sprite preview` writes one image for the ids it is given, each sprite under
+the one before, and prints its path. The file name says what kind it is, so
+one kind does not overwrite another:
+
+| Command | File in `.preview/` |
+|---|---|
+| `sprite preview archer` | `archer.plain.png` |
+| `sprite preview archer --grid` | `archer.grid.png` |
+| `sprite preview archer --on grass` | `archer.on-grass.png` |
+| `sprite preview archer warrior --grid` | `archer+warrior.grid.png` |
+| `sprite preview`, or `--sheet` | `sheet.png` |
+
+A sprite with only style problems (an outline or grounded fault, an empty
+frame) is still drawn: the problems are printed first, then the path, and the
+exit code is `0`. A problem that leaves a frame undrawable (a wrong row width,
+an unknown palette key) stops the preview with exit code `1`.
+
+### Sprites that are not drawn yet
+
+A sprite whose frames are all empty, which is what `sprite new` writes, is a
+warning (`W003`) and not an error. `sprite build` leaves it out and builds the
+rest.
 
 ## Export targets
 
@@ -164,6 +192,10 @@ so it can share a directory with hand-made assets:
   build stops before writing anything. Run `sprite build --adopt` once to take
   ownership of such files, for example after exporting into a directory that
   held an older copy of the art.
+
+- If you change a target's `out`, the tool no longer looks at the old
+  directory. Delete the generated files there yourself; its manifest lists
+  them.
 
 Commit the manifest with the exported files.
 

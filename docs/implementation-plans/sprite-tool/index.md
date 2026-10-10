@@ -161,6 +161,16 @@ there.
 
 ## Completion log
 
+### After the plan: review fixes, 2026-10-10
+
+Changes made after a review of the finished tool. The design was revised to match (sections 4.1, 4.5, 4.6, 4.8). `make check`: 897 passed, then `ok: 4 sprites, 6 frames`; golden files unchanged.
+
+- **Preview** draws a sprite that has only style problems (E106, E201, E202), printing them before the path, exit 0. Several ids give one stacked image. Files are named `<ids>.plain.png`, `<ids>.grid.png`, `<ids>.on-<tile-id>.png`; `sheet.png` is unchanged. An unknown id lists the known ones.
+- **Checks.** An outline fault carried into a derived frame is reported once, in the frame it comes from. A sprite with every frame empty is W003 and is left out of the build, so `sprite new` no longer stops it. A file name or variant name that is not `[a-z0-9_]+` is E001. An id that would export to another sprite's `<id>__<frame>.png` is E003.
+- **Project and paths.** With no project at or above the current directory, a single project up to three levels below is used. Problem paths are relative to the current directory, like the paths `new` and `preview` print.
+- **Guide** now covers the anchor, display scale, the default frame, facing right, `rows` as a table, `preview --on`, the contact sheet and `import` (58 lines for the demo).
+- **Not changed:** a target whose `out` is changed still leaves its old directory behind, because the tool keeps no record of past output directories. The README says to delete those files by hand.
+
 ### Plan complete, 2026-10-10
 
 Every row in the task table is `done`. The overall completion criteria were run after step 11:

@@ -726,3 +726,32 @@ def test_bad_input_is_reported_and_never_raises(project, text):
     assert problems != []
     assert all(problem.code[0] == "E" and problem.line >= 1 and problem.col >= 1 for problem in problems)
     assert [sprite.variant_of for sprite in sprites] in ([], [None])
+
+
+# --- ids ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["Big-Hero", "hero.v2", "héro", "hero one"])
+def test_file_name_that_is_not_a_sprite_id_is_e001_and_gives_no_sprite(project, name):
+    """Hand-made files get the rule `sprite new` applies: the id names exported files."""
+    sprites, problems = load_text(project, TINY, f"{name}.sprite.toml")
+    assert sprites == []
+    assert positions(problems) == [(0, 0, "E001")]
+    assert problems[0].message == f"sprite id {name!r} (the file name) must match [a-z0-9_]+"
+
+
+def test_variant_name_that_cannot_be_part_of_an_id_is_e001(project):
+    text = TINY + '\n[variants."red/dark"]\nswap = { b = "r" }\n'
+    sprites, problems = load_text(project, text)
+    assert [sprite.id for sprite in sprites] == ["hero"]
+    assert positions(problems) == [(10, 1, "E001")]
+    assert problems[0].message == "bad variant name 'red/dark': use a-z, 0-9 and _"
+
+
+def test_derived_frame_records_how_it_was_made(project):
+    text = TINY + '[frames.idle_1]\nfrom = "idle_0"\nshift = [1, -1]\nflip = true\n'
+    sprites, problems = load_text(project, text)
+    assert problems == []
+    literal, derived = sprites[0].frames
+    assert (literal.parent, literal.shift, literal.flip) == (None, (0, 0), False)
+    assert (derived.parent, derived.shift, derived.flip) == ("idle_0", (1, -1), True)

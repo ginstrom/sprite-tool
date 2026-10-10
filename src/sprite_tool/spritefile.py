@@ -24,7 +24,8 @@ _TOP_LEVEL_KEYS = ("canvas", "frames", "anim", "variants", "outline", "grounded"
 _FRAME_KEYS = ("from", "rows", "shift", "flip")
 _ANIM_KEYS = ("frames", "ms", "loop")
 _VARIANT_KEYS = ("swap",)
-_FRAME_NAME_RE = re.compile(r"[a-z0-9_]+")
+ID_RE = re.compile(r"[a-z0-9_]+")
+_FRAME_NAME_RE = ID_RE
 _ROW_INDEX_RE = re.compile(r"[0-9]{1,9}")
 _TOML_POSITION_RE = re.compile(r"at line (\d+), column (\d+)")
 _KEY_LINE_RE = re.compile(r"""\s*(?:([A-Za-z0-9_-]+)|"([^"]*)"|'([^']*)')\s*=\s*(.*)""")
@@ -62,6 +63,11 @@ def _load_file(path: Path, project: Project) -> tuple[list[Sprite], list[Problem
         match = _TOML_POSITION_RE.search(str(exc))
         line, col = (int(match[1]), int(match[2])) if match else (1, 1)
         return [], [Problem(path, line, col, "E001", f"invalid TOML: {exc}")]
+    sprite_id = path.name.removesuffix(SUFFIX)
+    if not ID_RE.fullmatch(sprite_id):
+        # The id names exported files and engine keys, so it is as strict as `sprite new`.
+        message = f"sprite id {sprite_id!r} (the file name) must match {ID_RE.pattern}"
+        return [], [Problem(path, 0, 0, "E001", message)]
     parser = _Parser(path, text, project)
     return parser.parse(data), parser.problems
 
@@ -350,7 +356,15 @@ class _Parser:
                 parent = resolved[derived.parent]
                 if parent is not None:
                     rows = derived.apply(parent.rows, canvas)
-                    resolved[child] = Frame(name=child, rows=rows, line=derived.line, literal=False)
+                    resolved[child] = Frame(
+                        name=child,
+                        rows=rows,
+                        line=derived.line,
+                        literal=False,
+                        parent=derived.parent,
+                        shift=derived.shift,
+                        flip=derived.flip,
+                    )
                 done.add(child)
 
 
@@ -405,6 +419,9 @@ class _Parser:
                 self.report("E001", f"variant {name!r} must be a table", *key)
                 continue
             problems_before = len(self.problems)
+            if not ID_RE.fullmatch(name):
+                # The name becomes part of a sprite id.
+                self.report("E001", f"bad variant name {name!r}: use a-z, 0-9 and _", *key)
             for field in table:
                 if field not in _VARIANT_KEYS:
                     self.report("E001", f"variant {name!r}: unknown field {field!r}", *key, field)

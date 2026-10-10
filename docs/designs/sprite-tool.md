@@ -1,6 +1,9 @@
 # sprite-tool design
 
 - **Date:** 2026-10-10
+- **Revised:** 2026-10-10, after a review of the finished tool: project
+  discovery from above, id rules, W003, de-duplicated outline faults, and
+  preview naming and behaviour (4.1, 4.5, 4.6, 4.8).
 - **Status:** Ready for planning. No blocking questions; assumptions and
   non-blocking questions are listed in [section 8](#8-open-questions-and-assumptions).
 
@@ -143,10 +146,17 @@ sprites/                    # any name; holds sprite-tool.toml
 ```
 
 Commands find the project by walking up from the current directory to the
-first `sprite-tool.toml`, or take `--project <dir>`.
+first `sprite-tool.toml`, or take `--project <dir>`. When there is none at or
+above the current directory, a single project up to three levels below it is
+used (hidden directories and `node_modules` are not searched), so commands
+work from the game repository's root; more than one is an error. Paths in
+command output are relative to the current directory.
 
-A sprite's **id** is its file stem (`warrior`). Subdirectories are only for
-organisation. Two files with the same stem are an error.
+A sprite's **id** is its file stem (`warrior`) and must match `[a-z0-9_]+`,
+as must a variant name, since both end up in file names and engine keys.
+Subdirectories are only for organisation. Two files with the same stem are an
+error, and so is an id of the form `<other id>__<frame>` that would export to
+the same loose PNG as a frame of another sprite.
 
 ### 4.2 Palette file (R1)
 
@@ -307,12 +317,12 @@ failures, `2` usage or config error.
 | `sprite guide` | Print the format reference, palette legend (key, hex, name) and canvas classes with their rules. | The guide |
 | `sprite new <id> --canvas <class> [--dir <subdir>]` | Write a sprite file with one all-transparent frame named `main`. Refuses to overwrite. | The path |
 | `sprite check [paths...]` | Check all sprite files, or only the given files. `.png` paths are checked as images and need `--canvas <class>`. | `ok: 12 sprites, 31 frames` |
-| `sprite preview [id...] [--scale N] [--grid] [--on <tile-id>] [--sheet]` | Write `.preview/<id>.png` for each id. With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first. | One path per line |
+| `sprite preview [id...] [--scale N] [--grid] [--on <tile-id>] [--sheet]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
 | `sprite build [--check]` | Run `check` on everything, then write every export target. With `--check`, write nothing and exit 1 if any generated file is missing or differs. | `built: 12 sprites, 31 frames, 3 targets` |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. Refuses to overwrite. | The path |
 
 `sprite build` never writes partial output: if `check` fails, no file is
-touched.
+touched. A blank sprite (W003) is not a failure; it is left out of the build.
 
 ### 4.6 Checks (R6)
 
@@ -330,7 +340,7 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 |---|---|
 | E001 | File is not valid TOML, or has an unknown or wrongly typed field. |
 | E002 | Palette invalid: bad key, bad hex value. |
-| E003 | Duplicate sprite id (including variant ids). |
+| E003 | Duplicate sprite id (including variant ids), or an id that exports to the same loose PNG as another sprite's frame. |
 | E101 | Unknown canvas class. |
 | E102 | Wrong row count for the canvas. |
 | E103 | Wrong row width, or trailing whitespace. Reported per row. |
@@ -345,6 +355,11 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 | E401 | `build --check`: generated file missing or stale. |
 | W001 | Two palette keys share one colour. |
 | W002 | Sprite has frames not used by any animation, when it declares at least one animation. |
+| W003 | Sprite is blank: every frame is fully transparent, as `sprite new` writes it. It is left out of the build. |
+
+E106 is for an empty frame in a sprite that has drawn frames. An outline
+fault that a derived frame only carries over from its `from` frame is
+reported once, in the frame it comes from.
 
 **Outline rule** (`outline = ["k", ...]` on a canvas class). Every
 non-transparent pixel that touches a transparent pixel on one of its four
@@ -442,6 +457,14 @@ otherwise it is a config error (exit 2). The example config in 4.3 shows
   `display_scale`, grouped by
   canvas class and sorted by id, with the id under each sprite. It is the
   consistency check: everything side by side at one scale.
+- Several ids give one image, each sprite's preview under the one before, so
+  a new sprite can be compared with an existing one in a single look.
+- File names say what kind of preview it is, so one kind does not overwrite
+  another: `<ids>.plain.png`, `<ids>.grid.png`, `<ids>.on-<tile-id>.png` and
+  `sheet.png`, where `<ids>` is the ids joined with `+` (`kobold+warrior`).
+- A sprite with style problems only (E106, E201, E202) is still drawn; the
+  problems are printed before the path and the exit code is 0. Seeing the
+  sprite is how those problems get fixed. Any other error stops the preview.
 - Preview files go to `.preview/` in the project and are not committed.
   Previews are for looking, so they are exempt from Q1.
 
@@ -470,7 +493,8 @@ The intended loop for an agent asked to "add a kobold":
 2. `sprite new kobold --canvas unit --dir units`, then edit the grid.
 3. `sprite check units/kobold.sprite.toml` until clean.
 4. `sprite preview kobold warrior --grid` and read the PNG to compare against
-   an existing sprite.
+   an existing sprite. This works before step 3 is clean, as long as the
+   grid has the right size and keys.
 5. `sprite build`.
 
 Editing an existing sprite is an edit to a few rows of text followed by steps

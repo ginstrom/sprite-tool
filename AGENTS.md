@@ -87,7 +87,8 @@ fails when a fresh build of the demo differs from it by a byte.
   sprite, JSON index). `tests/test_export_godot.py` loads the export in
   headless Godot when `godot` is on `PATH`, and skips that test otherwise.
 - `src/sprite_tool/preview.py`: the images `sprite preview` writes
-  (`sprite_preview`, `on_tile`, `contact_sheet`). Layout sizes are named
+  (`sprite_preview`, `on_tile`, `contact_sheet`, and `stack` for several
+  sprites in one image). Layout sizes are named
   constants, which the tests use. Previews are written straight to
   `.preview/`, not through the manifest.
 - `src/sprite_tool/importer.py`: `import_png` and `to_rows`, a PNG to the grid

@@ -31,11 +31,15 @@ A grid has one line per pixel row and one character per pixel. Each character is
 '.' is transparent. The grid must be exactly the canvas size, with no trailing spaces. Rows and
 columns count from 0 at the top left, in `rows` and in check messages (`row 2, col 4`).
 Positions written `file:line:col` count from 1.
-Frame names are free; `<anim>_<n>` is only a habit. A replacement row is a full row. Sprite files
-may be anywhere in the project; `sprite new` writes to the project root unless given `--dir`.
+Frame names are free; `<anim>_<n>` is only a habit. A replacement row is a full row. `rows` can
+also be a table, one row per line: `[frames.idle_1.rows]`, then `1 = "kbbbbk"`.
+The default frame is what a game shows when no animation plays, and what the contact sheet shows.
+Sprite files may be anywhere in the project; `sprite new` writes to the root unless given `--dir`.
 """
 
 _RULES = """\
+anchor x,y: the pixel a game places the sprite by; the bottom centre is where a unit stands.
+display scale: how much the game enlarges the class. Draw units facing right; games mirror them.
 outline <keys>: a pixel with a transparent pixel or the canvas edge directly above, below, left
   or right of it must use one of the keys. Diagonals do not count, so a part 1 or 2 pixels
   wide is all outline.
@@ -47,7 +51,11 @@ _COMMANDS = """\
 COMMANDS
 sprite new <id> --canvas <class> [--dir <subdir>]   write a blank sprite file to draw in
 sprite check [<file>...]                            list problems; fix them until it prints `ok`
-sprite preview <id> --grid                          write .preview/<id>.png to look at
+sprite preview <id>... [--grid]                     write one image of those sprites and print its
+                                                    path; it is drawn even with outline problems
+sprite preview <id> --on <tile-id>                  the sprite standing on a tile, as in the game
+sprite preview                                      contact sheet of every sprite
+sprite import <png> --canvas <class> [--snap]       write a sprite file from a PNG
 sprite build                                        check everything, then write the game's files
 """
 

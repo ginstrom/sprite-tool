@@ -19,13 +19,14 @@ MAX_E302_PER_FILE = 10
 
 
 def run(project: Project, sprites: Sequence[Sprite]) -> list[Problem]:
-    """E003, E106, E201, E202, W001 and W002 for the loaded sprites.
+    """E003, E106, E201, E202, W001, W002 and W003 for the loaded sprites.
 
     A variant gets only E003 and E201, so that a fault in its base sprite is
     not reported again for each variant.
     """
     problems = _shared_colours(project)
     problems += _duplicate_ids(project, sprites)
+    problems += _file_name_clashes(sprites)
     bases = {(sprite.source, sprite.id): sprite for sprite in sprites if sprite.variant_of is None}
     for sprite in sprites:
         if sprite.variant_of is None:
@@ -70,6 +71,25 @@ def _duplicate_ids(project: Project, sprites: Sequence[Sprite]) -> list[Problem]
     return problems
 
 
+def _file_name_clashes(sprites: Sequence[Sprite]) -> list[Problem]:
+    """E003 where a sprite id is also `<id>__<frame>` of another sprite: the
+    `frames` target would write both to one file."""
+    ids = {sprite.id: sprite for sprite in sprites}
+    problems = []
+    for sprite in sprites:
+        if len(sprite.frames) < 2:
+            continue
+        for frame in sprite.frames:
+            other = ids.get(f"{sprite.id}__{frame.name}")
+            if other is not None:
+                message = (
+                    f"sprite id {other.id!r} clashes with frame {frame.name!r} of sprite {sprite.id!r}"
+                    f" (both export as {other.id}.png)"
+                )
+                problems.append(Problem(other.source, 0, 0, "E003", message))
+    return problems
+
+
 def _shown(path: Path, root: Path) -> str:
     try:
         return path.relative_to(root).as_posix()
@@ -80,15 +100,35 @@ def _shown(path: Path, root: Path) -> str:
 # --- sprites ----------------------------------------------------------------
 
 
+def is_blank(sprite: Sprite) -> bool:
+    """Whether nothing has been drawn yet: every frame is fully transparent.
+
+    This is what `sprite new` writes. A blank sprite is a warning and is left
+    out of the build, so a sprite that is still to be drawn does not stop the
+    others from building.
+    """
+    return all(_is_clear(frame) for frame in sprite.frames)
+
+
+def _is_clear(frame: Frame) -> bool:
+    return all(key == TRANSPARENT for row in frame.rows for key in row)
+
+
 def _check_sprite(sprite: Sprite) -> list[Problem]:
+    if is_blank(sprite):
+        message = f"sprite {sprite.id!r} is blank (nothing drawn yet); it is left out of the build"
+        return [_at_frame(sprite, sprite.frames[0], "W003", message)]
     problems = []
+    frames = {frame.name: frame for frame in sprite.frames}
     for frame in sprite.frames:
         where = f"frame {frame.name!r}"
-        if all(key == TRANSPARENT for row in frame.rows for key in row):
+        if _is_clear(frame):
             problems.append(_at_frame(sprite, frame, "E106", f"{where} is fully transparent"))
             continue
         if sprite.outline:
-            problems += _outline_problems(sprite, frame, where, _outline_faults(sprite, frame))
+            inherited = _inherited_faults(sprite, frame, frames)
+            faults = [fault for fault in _outline_faults(sprite, frame) if fault not in inherited]
+            problems += _outline_problems(sprite, frame, where, faults)
         if sprite.grounded and frame.rows[-1].strip(TRANSPARENT) == "":
             message = f"{where}: bottom row is empty, sprite must stand on it"
             line = frame.line + len(frame.rows) - 1 if frame.literal and frame.line else frame.line
@@ -111,8 +151,9 @@ def _check_variant(variant: Sprite, base: Sprite | None) -> list[Problem]:
     problems = []
     for frame in variant.frames:
         base_frame = base_frames.get(frame.name)
-        in_base = set(_outline_faults(base, base_frame)) if base and base_frame else set()
-        faults = [fault for fault in _outline_faults(variant, frame) if fault not in in_base]
+        known = set(_outline_faults(base, base_frame)) if base and base_frame else set()
+        known |= _inherited_faults(variant, frame, {frame.name: frame for frame in variant.frames})
+        faults = [fault for fault in _outline_faults(variant, frame) if fault not in known]
         where = f"variant {variant.id!r} frame {frame.name!r}"
         problems += _outline_problems(variant, frame, where, faults)
     return problems
@@ -137,6 +178,21 @@ def _outline_faults(sprite: Sprite, frame: Frame) -> Iterator[tuple[int, int]]:
                 continue
             if is_clear(r - 1, c) or is_clear(r + 1, c) or is_clear(r, c - 1) or is_clear(r, c + 1):
                 yield r, c
+
+
+def _inherited_faults(sprite: Sprite, frame: Frame, frames: dict[str, Frame]) -> set[tuple[int, int]]:
+    """Where the outline faults of a derived frame's parent land in `frame`.
+
+    A fault that a derived frame only carries over is reported once, in the
+    frame it comes from; fixing it there fixes every frame derived from it.
+    """
+    parent = frames.get(frame.parent) if frame.parent else None
+    if parent is None:
+        return set()
+    dx, dy = frame.shift
+    width = len(frame.rows[0])
+    moved = ((r + dy, c + dx) for r, c in _outline_faults(sprite, parent))
+    return {(r, width - 1 - c if frame.flip else c) for r, c in moved}
 
 
 def _outline_problems(sprite: Sprite, frame: Frame, where: str, faults: Sequence[tuple[int, int]]) -> list[Problem]:

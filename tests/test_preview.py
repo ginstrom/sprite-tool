@@ -324,49 +324,79 @@ def break_sprite(root: Path, name: str) -> None:
 def test_a9_preview_writes_one_png_and_prints_only_its_path(demo, capsys):
     assert run("goblin") == 0
     captured = capsys.readouterr()
-    assert (captured.out, captured.err) == (".preview/goblin.png\n", "")
-    assert previews(demo) == ["goblin.png"]
-    with Image.open(demo / ".preview" / "goblin.png") as image:
+    assert (captured.out, captured.err) == (".preview/goblin.plain.png\n", "")
+    assert previews(demo) == ["goblin.plain.png"]
+    with Image.open(demo / ".preview" / "goblin.plain.png") as image:
         # The demo's configured scale is 6.
         assert image.size == (32 * 6 + 2 * MARGIN, 32 * 6 + 2 * MARGIN)
 
 
 def test_preview_of_a_sprite_shows_its_frames_and_variants(demo, loaded):
     assert run("warrior") == 0
-    with Image.open(demo / ".preview" / "warrior.png") as image:
+    with Image.open(demo / ".preview" / "warrior.plain.png") as image:
         assert image.convert("RGBA").tobytes() == sprite_image(loaded, "warrior", scale=6).tobytes()
 
 
 def test_preview_of_a_variant_shows_only_the_variant(demo, loaded):
     assert run("warrior_red") == 0
-    with Image.open(demo / ".preview" / "warrior_red.png") as image:
+    with Image.open(demo / ".preview" / "warrior_red.plain.png") as image:
         assert image.size == (2 * 32 * 6 + GAP + 2 * MARGIN, 32 * 6 + 2 * MARGIN)
 
 
 def test_scale_flag_overrides_the_configured_scale(demo):
     assert run("goblin", "--scale", "3") == 0
-    with Image.open(demo / ".preview" / "goblin.png") as image:
+    with Image.open(demo / ".preview" / "goblin.plain.png") as image:
         assert image.size == (32 * 3 + 2 * MARGIN, 32 * 3 + 2 * MARGIN)
 
 
-def test_grid_flag_draws_the_grid(demo, loaded):
+def test_grid_flag_draws_the_grid(demo, loaded, capsys):
     assert run("goblin", "--grid") == 0
-    with Image.open(demo / ".preview" / "goblin.png") as image:
+    assert capsys.readouterr().out == ".preview/goblin.grid.png\n"
+    with Image.open(demo / ".preview" / "goblin.grid.png") as image:
         assert image.convert("RGBA").tobytes() == sprite_image(loaded, "goblin", scale=6, grid=True).tobytes()
 
 
-def test_several_ids_write_one_file_each_in_the_order_given(demo, capsys):
+def test_each_kind_of_preview_has_its_own_file(demo):
+    assert run("goblin") == 0
+    assert run("goblin", "--grid") == 0
+    assert run("goblin", "--on", "ground_light") == 0
+    assert previews(demo) == ["goblin.grid.png", "goblin.on-ground_light.png", "goblin.plain.png"]
+
+
+def test_several_ids_are_one_image_in_the_order_given(demo, capsys, loaded):
     assert run("warrior", "goblin", "warrior") == 0
-    assert capsys.readouterr().out == ".preview/warrior.png\n.preview/goblin.png\n"
-    assert previews(demo) == ["goblin.png", "warrior.png"]
+    assert capsys.readouterr().out == ".preview/warrior+goblin.plain.png\n"
+    assert previews(demo) == ["warrior+goblin.plain.png"]
+    warrior = sprite_image(loaded, "warrior", scale=6)
+    goblin = sprite_image(loaded, "goblin", scale=6)
+    with Image.open(demo / ".preview" / "warrior+goblin.plain.png") as image:
+        image = image.convert("RGBA")
+        assert image.size == (warrior.width, warrior.height + goblin.height)
+        assert image.crop((0, 0, *warrior.size)).tobytes() == warrior.tobytes()
+        below = image.crop((0, warrior.height, goblin.width, warrior.height + goblin.height))
+        assert below.tobytes() == goblin.tobytes()
+        # The goblin has fewer frames; the space beside it is background.
+        assert image.getpixel((image.width - 1, image.height - 1)) == BACKGROUND
+
+
+def test_very_many_ids_get_a_short_file_name(demo, capsys):
+    ids = ["goblin", "warrior", "warrior_red", "ground_light"]
+    sources = {name: next(demo.rglob(name.removesuffix("_red") + ".sprite.toml")) for name in ids}
+    extra = []
+    for index in range(12):
+        name = f"goblin_copy_number_{index:02}"
+        (demo / f"{name}.sprite.toml").write_bytes(sources["goblin"].read_bytes())
+        extra.append(name)
+    assert run(*extra) == 0
+    assert capsys.readouterr().out == ".preview/goblin_copy_number_00+11more.plain.png\n"
 
 
 def test_a15_on_writes_the_unit_on_the_tile(demo, capsys, loaded):
     assert run("warrior", "--on", "ground_light") == 0
-    assert capsys.readouterr().out == ".preview/warrior.png\n"
-    assert previews(demo) == ["warrior.png"]
+    assert capsys.readouterr().out == ".preview/warrior.on-ground_light.png\n"
+    assert previews(demo) == ["warrior.on-ground_light.png"]
     project, sprites = loaded
-    with Image.open(demo / ".preview" / "warrior.png") as image:
+    with Image.open(demo / ".preview" / "warrior.on-ground_light.png") as image:
         # Tile 16 * 4 * 2 square and unit 32 * 2 * 2 square: the default common factor is 2.
         assert image.size == (128 + 2 * MARGIN, 128 + 2 * MARGIN)
         expected = preview.on_tile(project, sprites["warrior"], sprites["ground_light"], scale=2)
@@ -375,7 +405,7 @@ def test_a15_on_writes_the_unit_on_the_tile(demo, capsys, loaded):
 
 def test_on_takes_scale_as_the_common_factor_and_ignores_grid(demo):
     assert run("warrior", "--on", "ground_light", "--scale", "1", "--grid") == 0
-    with Image.open(demo / ".preview" / "warrior.png") as image:
+    with Image.open(demo / ".preview" / "warrior.on-ground_light.png") as image:
         assert image.size == (64 + 2 * MARGIN, 64 + 2 * MARGIN)
 
 
@@ -390,21 +420,27 @@ def test_no_ids_writes_the_contact_sheet(demo, capsys, loaded):
 
 def test_sheet_with_an_id_writes_both(demo, capsys):
     assert run("goblin", "--sheet") == 0
-    assert capsys.readouterr().out == ".preview/goblin.png\n.preview/sheet.png\n"
-    assert previews(demo) == ["goblin.png", "sheet.png"]
+    assert capsys.readouterr().out == ".preview/goblin.plain.png\n.preview/sheet.png\n"
+    assert previews(demo) == ["goblin.plain.png", "sheet.png"]
 
 
 def test_paths_are_absolute_from_outside_the_project(demo, capsys, tmp_path, monkeypatch):
     (tmp_path / "elsewhere").mkdir()
     monkeypatch.chdir(tmp_path / "elsewhere")
     assert run("goblin", "--project", str(demo)) == 0
-    assert capsys.readouterr().out == f"{demo / '.preview' / 'goblin.png'}\n"
+    assert capsys.readouterr().out == f"{demo / '.preview' / 'goblin.plain.png'}\n"
 
 
 def test_paths_are_relative_to_a_subdirectory_of_the_project(demo, capsys, monkeypatch):
     monkeypatch.chdir(demo / "units")
     assert run("goblin") == 0
-    assert capsys.readouterr().out == "../.preview/goblin.png\n"
+    assert capsys.readouterr().out == "../.preview/goblin.plain.png\n"
+
+
+def test_project_is_found_from_the_directory_above_it(demo, capsys, monkeypatch):
+    monkeypatch.chdir(demo.parent)
+    assert run("goblin") == 0
+    assert capsys.readouterr().out == f"{demo.name}/.preview/goblin.plain.png\n"
 
 
 def test_warnings_are_not_printed(demo, capsys):
@@ -414,7 +450,7 @@ def test_warnings_are_not_printed(demo, capsys):
     assert main(["check"]) == 0
     assert "W002" in capsys.readouterr().out
     assert run("warrior") == 0
-    assert capsys.readouterr().out == ".preview/warrior.png\n"
+    assert capsys.readouterr().out == ".preview/warrior.plain.png\n"
 
 
 def test_a_sprite_with_an_error_prints_the_problems_and_writes_nothing(demo, capsys):
@@ -429,6 +465,38 @@ def test_a_sprite_with_an_error_prints_the_problems_and_writes_nothing(demo, cap
     assert previews(demo) == []
 
 
+def break_outline(root: Path, name: str) -> None:
+    """Replace the first outline pixel of the sprite with white (E201)."""
+    path = next(root.rglob(name + ".sprite.toml"))
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("k", "w", 1), encoding="utf-8")
+
+
+def test_a_style_error_is_printed_and_the_preview_is_still_written(demo, capsys):
+    """The sprite can be drawn, and looking at it is how the fault gets fixed."""
+    break_outline(demo, "goblin")
+    assert run("goblin", "--grid") == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 3
+    assert "units/goblin.sprite.toml:" in lines[0] and "E201 frame 'main': 'w' touches transparency" in lines[0]
+    assert lines[1:] == ["1 error, 0 warnings in 1 file", ".preview/goblin.grid.png"]
+    assert previews(demo) == ["goblin.grid.png"]
+
+
+def test_a_blank_sprite_can_be_previewed(demo, capsys):
+    assert main(["new", "kobold", "--canvas", "unit"]) == 0
+    capsys.readouterr()
+    assert run("kobold") == 0
+    assert capsys.readouterr().out == ".preview/kobold.plain.png\n"
+
+
+def test_a_style_error_does_not_stop_the_contact_sheet(demo, capsys):
+    break_outline(demo, "goblin")
+    assert run() == 0
+    assert capsys.readouterr().out.splitlines()[-1] == ".preview/sheet.png"
+    assert previews(demo) == ["sheet.png"]
+
+
 def test_an_error_in_one_requested_sprite_stops_the_others(demo, capsys):
     break_sprite(demo, "goblin")
     assert run("warrior", "goblin") == 1
@@ -438,7 +506,7 @@ def test_an_error_in_one_requested_sprite_stops_the_others(demo, capsys):
 def test_an_error_in_another_sprite_does_not_stop_the_preview(demo, capsys):
     break_sprite(demo, "goblin")
     assert run("warrior") == 0
-    assert capsys.readouterr().out == ".preview/warrior.png\n"
+    assert capsys.readouterr().out == ".preview/warrior.plain.png\n"
 
 
 def test_an_error_in_the_tile_stops_an_on_preview(demo, capsys):
@@ -470,7 +538,8 @@ def test_a_bad_palette_prints_its_problems_and_writes_nothing(demo, capsys):
 def test_unknown_id_is_a_usage_error(demo, capsys, argv, name):
     assert run(*argv) == 2
     captured = capsys.readouterr()
-    assert (captured.out, captured.err) == ("", f"error: unknown sprite id '{name}'\n")
+    known = "(sprites: goblin, ground_light, warrior, warrior_red)"
+    assert (captured.out, captured.err) == ("", f"error: unknown sprite id '{name}' {known}\n")
     assert previews(demo) == []
 
 

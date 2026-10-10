@@ -429,3 +429,13 @@ def test_check_counts_warnings_in_the_summary(demo, capsys):
     edit(demo / "palette.toml", "[colors]", '[colors]\nz = "#f4f4f4"')
     assert run(demo, "--check") == 1
     assert capsys.readouterr().out.splitlines()[-1] == "9 errors, 1 warning in 10 files"
+
+
+def test_a_sprite_named_like_another_sprites_frame_file_stops_the_build(demo, capsys):
+    """`warrior__idle_0.png` would be both that sprite and a frame of `warrior`."""
+    goblin = demo / "units" / "goblin.sprite.toml"
+    (demo / "units" / "warrior__idle_0.sprite.toml").write_bytes(goblin.read_bytes())
+    assert main(["build", "--project", str(demo)]) == 1
+    out = capsys.readouterr().out
+    assert "E003 sprite id 'warrior__idle_0' clashes with frame 'idle_0' of sprite 'warrior'" in out
+    assert not (demo / "out").exists()

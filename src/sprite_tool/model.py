@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,7 +31,8 @@ class Frame:
 
     literal=True: the frame was written as a grid; `line` is the 1-based file
     line of row 0, so row r, column c is at (line + r, c + 1).
-    literal=False: derived frame; `line` is the line of its definition.
+    literal=False: derived frame; `line` is the line of its definition, and
+    `parent`, `shift` and `flip` say how it was made from another frame.
     line=0: position unknown.
     """
 
@@ -38,6 +40,9 @@ class Frame:
     rows: tuple[str, ...]
     line: int
     literal: bool
+    parent: str | None = None
+    shift: tuple[int, int] = (0, 0)
+    flip: bool = False
 
 
 @dataclass(frozen=True)
@@ -124,12 +129,24 @@ def hex_colour(rgba: tuple[int, int, int, int]) -> str:
     return "#" + (digits[:6] if rgba[3] == 255 else digits)
 
 
-def format_problem(problem: Problem, root: Path) -> str:
-    """One output line for a problem; paths under `root` are shown relative to it."""
+def shown_path(path: Path, root: Path, cwd: Path | None = None) -> str:
+    """`path` as the user would type it.
+
+    Relative to `cwd` when that is inside the project or holds the path, so
+    the text can be passed straight back to a command or opened. Otherwise
+    relative to `root` when under it, else as given.
+    """
+    if cwd is not None and path.is_absolute() and (path.is_relative_to(cwd) or cwd.is_relative_to(root)):
+        return Path(os.path.relpath(path, cwd)).as_posix()
     try:
-        shown = problem.path.relative_to(root).as_posix()
+        return path.relative_to(root).as_posix()
     except ValueError:
-        shown = str(problem.path)
+        return str(path)
+
+
+def format_problem(problem: Problem, root: Path, cwd: Path | None = None) -> str:
+    """One output line for a problem, with its path as `shown_path` gives it."""
+    shown = shown_path(problem.path, root, cwd)
     if problem.pixel:
         return f"{shown}:{problem.col},{problem.line}: {problem.code} {problem.message}"
     if problem.line == 0:
