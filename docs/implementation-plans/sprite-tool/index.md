@@ -38,7 +38,7 @@ Every task file repeats the ones that apply to it.
 | 06 | [Phaser export](06-phaser-export.md) | `phaser` target: sheet, JSON Hash atlas, animation JSON | 05 | done |
 | 07 | [Godot export](07-godot-export.md) | `godot` target: sheet, `SpriteFrames` `.tres` per sprite, index JSON | 05 | pending |
 | 08 | [Preview](08-preview.md) | `sprite preview` for sprites, `--grid`, `--on`, contact sheet | 03, 04 | pending |
-| 09 | [`init`, `new` and `guide`](09-init-new-guide.md) | Project scaffolding, blank sprite scaffolding, agent reference text | 05 | pending |
+| 09 | [`init`, `new` and `guide`](09-init-new-guide.md) | Project scaffolding, blank sprite scaffolding, agent reference text | 05 | done |
 | 10 | [Import](10-import.md) | `sprite import` with `--scale` and `--snap` | 03, 04 | pending |
 | 11 | [Golden files, documentation and acceptance](11-golden-docs-acceptance.md) | Golden output, determinism and speed tests, README and AGENTS.md, manual acceptance | 06, 07, 08, 09, 10 | pending |
 
@@ -160,6 +160,44 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Step 09, 2026-10-10, commits `397f8c5`, `672f910`, `1ca4c67`, and the commit that adds this entry
+
+**Evidence**
+
+- `make test`: 716 passed (664 before the step; 55 new in `tests/test_init_new_guide.py`; 3 stub cases for `init`, `guide` and `new` removed from `tests/test_cli.py`). `make check`: same.
+- A1 is `test_a1_init_then_build_in_an_empty_directory`. Run by hand in an empty scratch directory as well: `sprite init` prints `created . (3 files)`, `sprite build` prints `built: 2 sprites, 4 frames, 1 target` and writes six PNGs under `out/`, and a second `sprite init` exits 2 with `error: sprite-tool.toml already exists`.
+- A13 is `test_a13_demo_guide_is_short_and_lists_the_palette_and_canvas_classes`. `uv run sprite guide --project examples/demo` prints 47 lines, none longer than 100 characters.
+- Templates ship in the package: `test_templates_ship_in_the_package` reads each through `importlib.resources`, and a wheel built by hand with `uv build --wheel` lists all four under `sprite_tool/templates/`. No test builds a wheel, because the build may need the network.
+- `test_templates_match_the_demo` fails if `templates/palette.toml` or `templates/warrior.sprite.toml` differs from the demo's copy.
+- Every case in the task file's verification list has a test.
+- `uv run sprite build --project examples/demo` still prints `built: 4 sprites, 6 frames, 2 targets`, and `--check` prints `up to date`.
+
+**Names later steps need**
+
+- `guide.guide_text(project) -> str` and `guide.EXAMPLE`, the sprite file shown in the guide. `test_guide_example_is_a_valid_sprite_file_for_the_demo` runs `EXAMPLE` through `sprite check`, so a format change that breaks the example fails a test.
+- `model.hex_colour(rgba)` gives `#rrggbb`, or `#rrggbbaa` when not opaque. It was `check._hex`; `check.py` and `guide.py` both use it now.
+- In `cli.py`, for step 10 (`import`): `_SPRITE_ID_RE`, `_sprite_ids(project) -> dict[str, Path]` (every id in use, variants included, with its file), `_from_cwd(path, root)` (the path as printed by `new`) and `_unknown_canvas(name, project)`.
+- `tests/test_init_new_guide.py` has the `empty` fixture (an empty current directory) and `project` (the same after `init`).
+- A project from `init` has two sprites, `warrior` and `warrior_red`, four frames, and one `frames` target writing to `out`.
+
+**Choices the task file left open**
+
+- **`init` refuses if any of its three files exists**, not only `sprite-tool.toml`, so it never overwrites a palette or sprite. The message is `error: <path> already exists`, with the path as the user gave the directory.
+- **The `.gitignore` from `init` holds only `.preview/`**, as specified. `out/` is not ignored, since a game normally commits exported art.
+- **`new` prints the path relative to the current directory** when that directory is inside the project or contains the file, else absolute. This is the path to pass to `sprite check`.
+- **`new --dir` creates the directory** if needed and must stay inside the project; otherwise exit 2.
+- **A duplicate id in `new`** covers file stems anywhere in the project and variant ids (`warrior_red`). A file too broken to parse still holds its id.
+- **`new` works with a bad palette.** It does not report palette problems.
+- **`guide` with a bad palette** prints the palette problems and exits 1 without the guide (as P5 does for `check`).
+- **Guide layout.** The palette legend is two colours per line, which keeps the demo guide at 47 lines. A colour with no name is listed as key and hex. The outline and grounded rules are always explained, even if no class uses them.
+- The per-sprite `outline = false` and `grounded = false` are described in the canvas section, not in the example file.
+
+**Notes**
+
+- The guide lists `sprite preview <id> --grid`, which is a stub until step 08.
+- The guide example uses the keys `k`, `w`, `b`, `B`, `r` and `R`. A project whose palette lacks them still gets this example; the legend below it is the project's own.
+- If `init` fails part-way (for example a read-only directory), the files already written stay.
 
 ### Step 06, 2026-10-10, commit `027319c` and the commit that adds this entry
 

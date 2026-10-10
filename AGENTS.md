@@ -46,6 +46,10 @@ Everything runs through `uv`.
   the exit code. Handlers call `load_project(args)` to resolve and load the
   project, or `load_checked(args)` to load and check every sprite as well.
   `report(problems, root)` prints problems and the failure summary.
+- `src/sprite_tool/guide.py`: `guide_text`, the reference that `sprite guide`
+  prints. Update it when the sprite file format or a command changes.
+- `src/sprite_tool/templates/`: the files `sprite init` writes. The palette
+  and the warrior sprite are copies of the demo's; a test fails if they differ.
 - `src/sprite_tool/spritefile.py`: parses `*.sprite.toml` into sprites, and
   reports what it cannot parse.
 - `src/sprite_tool/check.py`: checks on resolved sprites (`run`) and on PNG
