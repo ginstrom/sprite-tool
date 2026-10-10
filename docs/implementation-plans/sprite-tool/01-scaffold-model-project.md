@@ -145,9 +145,9 @@ No sprite parsing, checks, rendering or export in this step.
 
 ## Completion criteria
 
-- [ ] Package installs with `uv sync` and `uv run sprite --help` works.
-- [ ] `model.py` matches the dataclasses above.
-- [ ] `project.load` enforces every config and palette rule listed.
-- [ ] All seven subcommands and their flags are declared with stubs.
-- [ ] `make test` passes; `uv.lock` committed.
-- [ ] Index status and completion log updated.
+- [x] Package installs with `uv sync` and `uv run sprite --help` works.
+- [x] `model.py` matches the dataclasses above.
+- [x] `project.load` enforces every config and palette rule listed.
+- [x] All seven subcommands and their flags are declared with stubs.
+- [x] `make test` passes; `uv.lock` committed.
+- [x] Index status and completion log updated.

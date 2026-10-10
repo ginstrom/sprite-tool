@@ -30,7 +30,7 @@ Every task file repeats the ones that apply to it.
 
 | Step | Task | Outcome | Depends on | Status |
 |---|---|---|---|---|
-| 01 | [Scaffold, model and project loading](01-scaffold-model-project.md) | Installable package, `sprite` CLI skeleton with all subcommands declared, data model, config and palette loading | none | in progress |
+| 01 | [Scaffold, model and project loading](01-scaffold-model-project.md) | Installable package, `sprite` CLI skeleton with all subcommands declared, data model, config and palette loading | none | done |
 | 02 | [Sprite file parser](02-sprite-file-parser.md) | `*.sprite.toml` parsed into sprites with derived frames, variants and source positions | 01 | pending |
 | 03 | [Checks, `check` command and demo project](03-checks-and-demo.md) | Style and PNG checks, working `sprite check`, `examples/demo/` sources | 02 | pending |
 | 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | pending |
@@ -161,4 +161,33 @@ there.
 
 ## Completion log
 
-(none yet)
+### Step 01, 2026-10-10, commit `68cec6f`
+
+**Evidence**
+
+- `make test`: 127 passed (Python 3.11.10, Pillow 12.3.0, pytest 9.1.1). `make check`: same.
+- `uv run sprite --help` lists `init`, `guide`, `new`, `check`, `preview`, `build`, `import`.
+- `uv run sprite build` outside a project and `uv run sprite` with no subcommand both exit 2.
+- `uv tree --no-dev` shows `pillow v12.3.0` as the only runtime dependency. `uv.lock` is committed.
+
+**Names later steps need**
+
+- `cli.HANDLERS` maps each subcommand name to `handler(args) -> int`. A step replaces its own entry; every entry is currently the `not implemented` stub.
+- `cli.load_project(args) -> tuple[Project, list[Problem]]` is the project-loading helper. It raises `ConfigError` (including "no project found"), which `main` prints as `error: <message>` on stderr and turns into exit 2, so handlers do not catch it.
+- `cli.build_parser()` returns the parser. Argument names: `init`: `dir` (default `"."`); `new`: `id`, `canvas`, `dir`; `check`: `paths`, `canvas`; `preview`: `ids`, `scale`, `grid`, `on`, `sheet`; `build`: `check`, `adopt`; `import`: `png`, `canvas`, `id`, `scale`, `snap`. `project` is `None` when not given. `--scale` is `None` when not given and is refused below 1.
+- `cli.EXIT_OK`, `EXIT_CHECK_FAILED`, `EXIT_USAGE` are 0, 1, 2.
+- `project.CONFIG_NAME` is `"sprite-tool.toml"`. `project.EXPORT_TYPES` and `ATLAS_TYPES` list the target types.
+- `tests/conftest.py` has `write_project(root, config, palette)`, the `project_dir` fixture and the `VALID_CONFIG`, `MINIMAL_CONFIG`, `VALID_PALETTE` strings.
+
+**Choices the task file left open**
+
+- `Project.root`, `palette_path` and `ExportTarget.out` are resolved absolute paths (`Path.resolve()`), so `out = "../assets"` has no `..` left in it.
+- A `frames` target has `name = None`, `res_path = None`, `padding = 0`. A key the target type does not use (`name` or `padding` on `frames`, `res_path` on `frames` or `phaser`) is a `ConfigError`, in line with "unknown keys are an error".
+- `[canvas.<name>].outline` keys are checked against the palette only when the palette loaded without problems. Otherwise a bad palette entry would surface as a config error (exit 2) and hide the E002 line that P5 says to print (exit 1).
+- Palette problems carry column 1 when the line is known. Lines are found for table headers and single-line `key = value` entries; a multi-line value or dotted key gives line 0. A palette with no `[colors]` table is E001 at line 0.
+- A palette colour table with a non-string `name`, or without `hex`, is E002; an unknown field in it is E001. In each case that colour is left out of `Project.palette`.
+- Added `src/sprite_tool/__main__.py` so `python -m sprite_tool` works; a test uses it to check the real process exit code.
+
+**Left for later steps**
+
+- `README.md` still says "design only" (step 11 rewrites it).
