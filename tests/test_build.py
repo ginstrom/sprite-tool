@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -109,6 +110,23 @@ def test_default_frame_file_is_the_first_frame(demo):
     out = demo / "out" / "frames"
     assert (out / "warrior.png").read_bytes() == (out / "warrior__idle_0.png").read_bytes()
     assert (out / "warrior.png").read_bytes() != (out / "warrior__idle_1.png").read_bytes()
+
+
+def test_a4_a_frame_derived_with_rows_renders_as_the_same_frame_written_in_full(demo):
+    source = demo / "units" / "warrior.sprite.toml"
+    frames = tomllib.loads(source.read_text(encoding="utf-8"))["frames"]
+    rows = frames["idle_0"].strip("\n").split("\n")
+    for index, row in frames["idle_1"]["rows"].items():
+        rows[int(index)] = row
+    full = "\n".join(rows)
+    edit(source, "[frames.idle_1]", f'idle_full = """\n{full}\n"""\n\n[frames.idle_1]')
+
+    assert run(demo) == 0
+
+    out = demo / "out" / "frames"
+    derived = (out / "warrior__idle_1.png").read_bytes()
+    assert derived == (out / "warrior__idle_full.png").read_bytes()
+    assert derived != (out / "warrior__idle_0.png").read_bytes()
 
 
 def test_a5_red_variant_is_the_base_with_its_colours_swapped(demo):
