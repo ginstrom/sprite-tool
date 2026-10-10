@@ -40,7 +40,7 @@ Every task file repeats these.
 | 01 | [Runs](01-runs.md) | `runs` in a frame table; `from` optional | none | done |
 | 02 | [Automatic outline](02-auto-outline.md) | `outline = "auto"` draws the outline; edge faults reported with their own wording | 01 | done |
 | 03 | [`build = false`](03-build-false.md) | A sprite that is checked and previewed and never exported | none | done |
-| 04 | [Adopt by id](04-adopt-by-id.md) | `build --adopt [id ...]`, `adopted` lines, new stop message | 03 | pending |
+| 04 | [Adopt by id](04-adopt-by-id.md) | `build --adopt [id ...]`, `adopted` lines, new stop message | 03 | done |
 | 05 | [Export index, demo sprites and golden files](05-export-index-demo-golden.md) | `sprites.json` in `frames`, `canvas` and `bounds` in the `godot` index, two new demo sprites, regenerated golden files | 01, 02, 03 | pending |
 | 06 | [Preview at game size](06-preview-game-size.md) | Game-size frames beside the enlarged ones; `--scale display` | none | pending |
 | 07 | [Guide and template](07-guide-template.md) | Guide states key rules, exports, removed keys, runs, auto outline, `build = false` | 01, 02, 03, 04, 05 | pending |
@@ -181,3 +181,17 @@ record it there.
   - The filter in `cli._build` is one list comprehension with the blank-sprite filter: `sprite.build and not check.is_blank(sprite)`. Step 04 validates adopt ids against the list it leaves.
   - `ALL_TARGETS` in `tests/test_build.py` configures the three target types in one project; step 05 can use it.
 - **No deviation** from the task file. `check.py`, `preview.py` and the exporters are unchanged.
+
+### Step 04: Adopt by id (2026-10-10, commits `8421d52`, `fc7a2bf`)
+
+- **Evidence.** `uv run pytest tests/test_manifest.py tests/test_build.py`: 104 passed. `make check`: 1035 passed (1004 before the step), then `ok: 4 sprites, 6 frames`. `git status` shows no change under `examples/demo/` or `tests/golden/`. `uv run sprite build --help` shows `--adopt [id ...]` with the new help text.
+- **Criteria.** A23 is the two `test_a23_*` tests and A24 is `test_a24_adopting_an_unknown_id_exits_2_and_writes_nothing`, in `tests/test_build.py`. Each other clause of the task's verification list has a test beside them; the naming rule and both forms of the stop message are in `tests/test_manifest.py` under "adopting by sprite id".
+- **Existing tests changed.** `test_an_unowned_file_blocks_the_build` now asserts the whole new stop message, `test_adopt_takes_ownership_of_existing_files` expects its `adopted` line, and `test_parsed_arguments` in `tests/test_cli.py` expects `args.adopt` to be `None` without the flag. The older tests in `tests/test_manifest.py` assert only parts of the message that did not change, so they needed no edit.
+- **Choices later steps may meet.**
+  - `manifest.check_ownership(plans, adopt_ids=None)`: `None` and an empty set both adopt nothing. The bare flag is `args.adopt == []` in `cli._build`, which skips the call, as before.
+  - `manifest.belongs_to` looks at the last part of the path, so a file in a subdirectory of the output directory follows the same rule.
+  - The path in the stop message is still the directory joined to the name, as it was at 0.2.0 (absolute when `out` resolves to an absolute path). Only the `adopted` lines go through `cli._from_cwd`.
+  - An unknown id is reported even when no file needs adopting, and with no sprites in the build the list reads `(sprites: none)`, as in `cli._preview`.
+  - Giving an id twice is accepted.
+  - Steps 07 and 08: the guide, the README and `AGENTS.md` still describe the bare `--adopt` and the old one-line output rule.
+- **No deviation** from the task file.
