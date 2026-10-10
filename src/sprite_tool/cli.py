@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable, Iterable, Sequence
+from importlib import resources
 from pathlib import Path
 
 from . import check, manifest, render, spritefile
@@ -93,6 +94,36 @@ def _not_implemented(args: argparse.Namespace) -> int:
     return _usage_error("not implemented")
 
 
+# Template name to the path `init` writes it to. The last is not counted in the summary line.
+_INIT_FILES = {
+    "sprite-tool.toml": CONFIG_NAME,
+    "palette.toml": "palette.toml",
+    "warrior.sprite.toml": "units/warrior" + spritefile.SUFFIX,
+    "gitignore": ".gitignore",
+}
+
+
+def _init(args: argparse.Namespace) -> int:
+    root = Path(args.dir)
+    targets = {template: root / name for template, name in _INIT_FILES.items()}
+    ignore = targets.pop("gitignore")
+    for path in targets.values():
+        if path.exists():
+            return _usage_error(f"{path.as_posix()} already exists")
+
+    templates = resources.files(__package__) / "templates"
+    try:
+        for template, path in targets.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((templates / template).read_bytes())
+        if not ignore.exists():
+            ignore.write_bytes((templates / "gitignore").read_bytes())
+    except OSError as exc:
+        return _usage_error(f"cannot write project: {exc}")
+    print(f"created {root.as_posix()} ({count(len(targets), 'file')})")
+    return EXIT_OK
+
+
 def _check(args: argparse.Namespace) -> int:
     given = [Path(path) for path in args.paths]
     images = [path for path in given if path.suffix.lower() == ".png"]
@@ -159,7 +190,7 @@ def _build(args: argparse.Namespace) -> int:
 
 # One handler per subcommand. Each takes the parsed arguments and returns the exit code.
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
-    "init": _not_implemented,
+    "init": _init,
     "guide": _not_implemented,
     "new": _not_implemented,
     "check": _check,

@@ -1,0 +1,36 @@
+# sprite-tool project. Paths are relative to this file. Run `sprite guide` for the sprite file format.
+version = 1
+palette = "palette.toml"
+
+# One table per canvas class. A sprite's size comes from its class.
+[canvas.unit]
+size = [32, 32]          # width, height in pixels
+anchor = [16, 32]        # exported as the pivot; here bottom centre
+display_scale = 2        # how much the game enlarges this class
+outline = ["k"]          # edge pixels must use one of these palette keys
+grounded = true          # the bottom row of every frame must have a pixel
+
+[canvas.tile]
+size = [16, 16]
+anchor = [0, 0]
+display_scale = 4
+
+[preview]
+scale = 6                # default upscale for `sprite preview`
+background = "#3a3a3a"
+
+# `sprite build` writes every [[export]] target. `frames` writes one PNG per frame.
+[[export]]
+type = "frames"
+out = "out"
+
+# [[export]]
+# type = "phaser"
+# out = "../public/assets/sprites"
+# name = "atlas"         # atlas.png, atlas.json, atlas.anims.json
+#
+# [[export]]
+# type = "godot"
+# out = "../assets/sprites"
+# name = "atlas"
+# res_path = "res://assets/sprites"   # where `out` sits inside the Godot project
