@@ -533,3 +533,196 @@ def test_wrongly_typed_or_unknown_derived_field_is_e001(project, body, line):
     assert positions(problems) == [(line, 1, "E001")]
     assert "'next'" in problems[0].message
     assert [frame.name for frame in sprite.frames] == ["idle_0"]
+
+
+# --- animations -----------------------------------------------------------
+
+# The bad `rows` key is on line 17 and `[anim.idle]` on line 19.
+TWO_FRAMES = TINY + 'idle_1 = """\n....\nkwwk\nkbbk\n"""\n\n[frames.bad]\nfrom = "idle_0"\nrows = { 0 = "????" }\n'
+ANIM = TWO_FRAMES + "\n[anim.idle]\n"
+
+
+def test_two_frames_fixture_lines(project):
+    (sprite,), problems = load_text(project, ANIM + 'frames = ["idle_0"]\nms = 100\n')
+    assert positions(problems) == [(17, 1, "E104")] * 4
+    assert sprite.anims[0].name == "idle"
+
+
+def anims(project, body):
+    (sprite,), problems = load_text(project, ANIM + body)
+    return sprite.anims, [problem for problem in problems if problem.line > 17]
+
+
+def test_animation_is_parsed(project):
+    from sprite_tool.model import Anim
+
+    found, problems = anims(project, 'frames = ["idle_0", "idle_1", "idle_0"]\nms = 400\nloop = false\n')
+
+    assert problems == []
+    assert found == (Anim(name="idle", frames=("idle_0", "idle_1", "idle_0"), ms=400, loop=False),)
+
+
+def test_animation_loops_by_default(project):
+    found, _ = anims(project, 'frames = ["idle_0"]\nms = 400\n')
+    assert found[0].loop is True
+
+
+def test_animations_keep_file_order(project):
+    body = 'frames = ["idle_0"]\nms = 400\n\n[anim.attack]\nframes = ["idle_1"]\nms = 80\n'
+    found, problems = anims(project, body)
+    assert problems == []
+    assert [anim.name for anim in found] == ["idle", "attack"]
+
+
+def test_animation_naming_a_missing_frame_is_e105(project):
+    found, problems = anims(project, 'ms = 400\nframes = ["idle_0", "idle_7"]\n')
+
+    assert positions(problems) == [(21, 1, "E105")]
+    assert "'idle'" in problems[0].message and "'idle_7'" in problems[0].message
+    assert found == ()
+
+
+def test_animation_naming_a_failed_frame_is_dropped_silently(project):
+    found, problems = anims(project, 'frames = ["idle_0", "bad"]\nms = 400\n')
+    assert problems == []
+    assert found == ()
+
+
+@pytest.mark.parametrize(
+    "body, line",
+    [
+        ("ms = 400\n", 19),
+        ('frames = "idle_0"\nms = 400\n', 20),
+        ("frames = []\nms = 400\n", 20),
+        ("frames = [1]\nms = 400\n", 20),
+        ('frames = ["idle_0"]\n', 19),
+        ('frames = ["idle_0"]\nms = 0\n', 21),
+        ('frames = ["idle_0"]\nms = 1.5\n', 21),
+        ('frames = ["idle_0"]\nms = true\n', 21),
+        ('frames = ["idle_0"]\nms = 400\nloop = 1\n', 22),
+        ('frames = ["idle_0"]\nms = 400\nfps = 12\n', 22),
+    ],
+)
+def test_wrongly_typed_or_unknown_animation_field_is_e001(project, body, line):
+    found, problems = anims(project, body)
+
+    assert positions(problems) == [(line, 1, "E001")]
+    assert "'idle'" in problems[0].message
+    assert found == ()
+
+
+# --- variants -------------------------------------------------------------
+
+# `[variants.red]` is on line 18.
+VARIANT = (
+    TINY
+    + '\n[frames.flipped]\nfrom = "idle_0"\nrows = { 2 = "kb.." }\n'
+    + '\n[anim.idle]\nframes = ["idle_0", "flipped"]\nms = 400\n'
+    + "\n[variants.red]\n"
+)
+
+
+def test_variant_is_a_sprite_with_swapped_rows(project):
+    sprites, problems = load_text(project, VARIANT + 'swap = { b = "r" }\n')
+
+    assert problems == []
+    base, red = sprites
+    assert (base.id, base.variant_of) == ("hero", None)
+    assert (red.id, red.variant_of) == ("hero_red", "hero")
+    assert frame_rows(base, "idle_0") == (".kk.", "kwwk", "kbbk")
+    assert frame_rows(red, "idle_0") == (".kk.", "kwwk", "krrk")
+    assert frame_rows(red, "flipped") == (".kk.", "kwwk", "kr..")
+
+
+def test_variant_keeps_everything_else_from_its_base(project):
+    (base, red), _ = load_text(project, VARIANT + 'swap = { b = "r" }\n')
+
+    assert red.anims == base.anims != ()
+    assert (red.source, red.canvas, red.outline, red.grounded) == (base.source, base.canvas, True, True)
+    assert [(f.name, f.line, f.literal) for f in red.frames] == [(f.name, f.line, f.literal) for f in base.frames]
+
+
+def test_swap_is_applied_once_and_simultaneously(project):
+    (_, red), problems = load_text(project, VARIANT + 'swap = { b = "w", w = "b" }\n')
+
+    assert problems == []
+    assert frame_rows(red, "idle_0") == (".kk.", "kbbk", "kwwk")
+
+
+def test_each_variant_is_its_own_sprite(project):
+    sprites, problems = load_text(project, VARIANT + 'swap = { b = "r" }\n\n[variants.pale]\nswap = { b = "w" }\n')
+
+    assert problems == []
+    assert [(sprite.id, sprite.variant_of) for sprite in sprites] == [
+        ("hero", None),
+        ("hero_pale", "hero"),
+        ("hero_red", "hero"),
+    ]
+
+
+def test_swap_naming_keys_outside_the_palette_is_e107(project):
+    sprites, problems = load_text(project, VARIANT + 'swap = { b = "R", Z = "r", w = "." }\n')
+
+    assert positions(problems) == [(19, 1, "E107")] * 3
+    assert [problem.message.split("swap key ")[1][:3] for problem in problems] == ["'R'", "'Z'", "'.'"]
+    assert "'red'" in problems[0].message
+    assert [sprite.id for sprite in sprites] == ["hero"]
+
+
+@pytest.mark.parametrize(
+    "body, line",
+    [
+        ("", 18),
+        ('swap = "b"\n', 19),
+        ("swap = { b = 1 }\n", 19),
+        ('swap = { b = "r" }\ntint = "#ff0000"\n', 20),
+    ],
+)
+def test_wrongly_typed_or_unknown_variant_field_is_e001(project, body, line):
+    sprites, problems = load_text(project, VARIANT + body)
+
+    assert positions(problems) == [(line, 1, "E001")]
+    assert "'red'" in problems[0].message
+    assert [sprite.id for sprite in sprites] == ["hero"]
+
+
+def test_variant_of_a_file_with_no_good_frame_is_not_produced(project):
+    sprites, problems = load_text(project, VARIANT.replace(".kk.", ".??.") + 'swap = { b = "r" }\n')
+    assert sprites == []
+    assert {problem.code for problem in problems} == {"E104"}
+
+
+# --- bad input never raises -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "canvas = 3\n",
+        'canvas = "tiny"\nframes = 3\n',
+        'canvas = "tiny"\nframes = []\n',
+        'canvas = "tiny"\n[frames]\n',
+        'canvas = "tiny"\n[frames]\nmain = ""\n',
+        'canvas = "tiny"\n[frames]\nmain = "k"\n',
+        'canvas = "tiny"\n[frames]\nmain = []\n',
+        'canvas = "tiny"\n[frames]\nmain = """\n\n\n\n\n"""\n',
+        'canvas = "tiny"\n[frames]\nmain = """\néééé\n\t\n \n"""\n',
+        'canvas = "tiny"\nframes.main = """\n????\n????\n"""\n',
+        'canvas = "tiny"\n[frames.main]\n',
+        'canvas = "tiny"\n[frames.main]\nfrom = "main"\nrows = { "²" = 1 }\nshift = "x"\nflip = 0\n',
+        'canvas = "tiny"\n[frames.main]\nfrom = []\nrows = []\nshift = [[], {}]\n',
+        'canvas = "tiny"\n[[frames.main]]\nfrom = "x"\n',
+        TINY + "anim = 3\nvariants = 3\n",
+        TINY + "\n[anim]\nidle = 3\n\n[variants]\nred = 3\n",
+        TINY + "\n[anim.idle]\nframes = [[]]\nms = []\nloop = []\n\n[variants.red]\nswap = []\n",
+        TINY + '\n[variants.red]\nswap = { bb = "rr", "" = "" }\n',
+        TINY + "\n[[anim]]\nx = 1\n\n[[variants]]\nx = 1\n",
+    ],
+)
+def test_bad_input_is_reported_and_never_raises(project, text):
+    sprites, problems = load_text(project, text)
+
+    assert problems != []
+    assert all(problem.code[0] == "E" and problem.line >= 1 and problem.col >= 1 for problem in problems)
+    assert [sprite.variant_of for sprite in sprites] in ([], [None])

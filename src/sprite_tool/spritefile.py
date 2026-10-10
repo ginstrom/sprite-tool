@@ -10,11 +10,11 @@ from __future__ import annotations
 import re
 import tomllib
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from .model import Canvas, Frame, Problem, Project, Sprite
+from .model import Anim, Canvas, Frame, Problem, Project, Sprite
 
 SUFFIX = ".sprite.toml"
 TRANSPARENT = "."
@@ -22,8 +22,10 @@ MAX_E104_PER_FRAME = 10
 
 _TOP_LEVEL_KEYS = ("canvas", "frames", "anim", "variants", "outline", "grounded")
 _FRAME_KEYS = ("from", "rows", "shift", "flip")
+_ANIM_KEYS = ("frames", "ms", "loop")
+_VARIANT_KEYS = ("swap",)
 _FRAME_NAME_RE = re.compile(r"[a-z0-9_]+")
-_ROW_INDEX_RE = re.compile(r"[0-9]+")
+_ROW_INDEX_RE = re.compile(r"[0-9]{1,9}")
 _TOML_POSITION_RE = re.compile(r"at line (\d+), column (\d+)")
 _KEY_LINE_RE = re.compile(r"""\s*(?:([A-Za-z0-9_-]+)|"([^"]*)"|'([^']*)')\s*=\s*(.*)""")
 
@@ -193,6 +195,8 @@ class _Parser:
         outline = self._flag(data, "outline")
         grounded = self._flag(data, "grounded")
         resolved = self._frames(data.get("frames"), canvas)
+        anims = self._anims(data.get("anim", {}), resolved)
+        swaps = self._variants(data.get("variants", {}))
 
         frames = tuple(frame for frame in resolved.values() if frame is not None)
         if not frames:
@@ -202,12 +206,12 @@ class _Parser:
             source=self.path,
             canvas=canvas,
             frames=frames,
-            anims=(),
+            anims=anims,
             outline=canvas.outline is not None and outline,
             grounded=canvas.grounded and grounded,
             variant_of=None,
         )
-        return [sprite]
+        return [sprite, *(_variant(sprite, name, swap) for name, swap in swaps.items())]
 
     def _canvas(self, data: dict[str, Any]) -> Canvas | None:
         name = data.get("canvas")
@@ -348,6 +352,82 @@ class _Parser:
                     rows = derived.apply(parent.rows, canvas)
                     resolved[child] = Frame(name=child, rows=rows, line=derived.line, literal=False)
                 done.add(child)
+
+
+    # --- animations and variants ---
+
+    def _anims(self, raw: Any, frames: dict[str, Frame | None]) -> tuple[Anim, ...]:
+        if not isinstance(raw, dict):
+            self.report("E001", "anim must be a table of [anim.<name>] tables", "anim")
+            return ()
+        anims = []
+        for name, table in raw.items():
+            key = ("anim", name)
+            if not isinstance(table, dict):
+                self.report("E001", f"anim {name!r} must be a table", *key)
+                continue
+            problems_before = len(self.problems)
+            for field in table:
+                if field not in _ANIM_KEYS:
+                    self.report("E001", f"anim {name!r}: unknown field {field!r}", *key, field)
+
+            names = table.get("frames")
+            if not isinstance(names, list) or not names or not all(isinstance(item, str) for item in names):
+                message = f"anim {name!r}: frames is required and must be a list of frame names"
+                self.report("E001", message, *key, "frames")
+                names = []
+            for frame in dict.fromkeys(names):
+                if frame not in frames:
+                    self.report("E105", f"anim {name!r}: unknown frame {frame!r}", *key, "frames")
+
+            ms = table.get("ms")
+            if not _is_int(ms) or ms < 1:
+                self.report("E001", f"anim {name!r}: ms is required and must be a positive integer", *key, "ms")
+
+            loop = table.get("loop", True)
+            if not isinstance(loop, bool):
+                self.report("E001", f"anim {name!r}: loop must be true or false", *key, "loop")
+
+            # A frame that failed has its own problem; the animation just goes.
+            if len(self.problems) == problems_before and all(frames[frame] is not None for frame in names):
+                anims.append(Anim(name=name, frames=tuple(names), ms=ms, loop=loop))
+        return tuple(anims)
+
+    def _variants(self, raw: Any) -> dict[str, dict[int, str]]:
+        """The translation table of each valid variant, by variant name."""
+        if not isinstance(raw, dict):
+            self.report("E001", "variants must be a table of [variants.<name>] tables", "variants")
+            return {}
+        swaps = {}
+        for name, table in raw.items():
+            key = ("variants", name)
+            if not isinstance(table, dict):
+                self.report("E001", f"variant {name!r} must be a table", *key)
+                continue
+            problems_before = len(self.problems)
+            for field in table:
+                if field not in _VARIANT_KEYS:
+                    self.report("E001", f"variant {name!r}: unknown field {field!r}", *key, field)
+
+            swap = table.get("swap")
+            if not isinstance(swap, dict) or not all(isinstance(target, str) for target in swap.values()):
+                message = f"variant {name!r}: swap is required and must be a table of palette key to palette key"
+                self.report("E001", message, *key, "swap")
+                continue
+            for palette_key in dict.fromkeys(item for pair in swap.items() for item in pair):
+                if palette_key not in self.project.palette:
+                    message = f"variant {name!r}: swap key {palette_key!r} is not in the palette"
+                    self.report("E107", message, *key, "swap")
+
+            if len(self.problems) == problems_before:
+                swaps[name] = str.maketrans(swap)
+        return swaps
+
+
+def _variant(base: Sprite, name: str, swap: dict[int, str]) -> Sprite:
+    """`base` with every palette key swapped at once."""
+    frames = tuple(replace(frame, rows=tuple(row.translate(swap) for row in frame.rows)) for frame in base.frames)
+    return replace(base, id=f"{base.id}_{name}", frames=frames, variant_of=base.id)
 
 
 class _RowCheck:
