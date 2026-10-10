@@ -60,6 +60,14 @@ def test_usage_errors_exit_2(argv, capsys):
     assert captured.err != ""
 
 
+def test_import_help_says_scale_enlarges_the_png(capsys):
+    with pytest.raises(SystemExit):
+        main(["import", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "enlarge the PNG N times before importing" in out
+    assert "shrink" not in out
+
+
 # --- project resolution helper ---------------------------------------------
 
 

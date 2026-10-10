@@ -402,7 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
     import_.add_argument("png", help="PNG file to import")
     import_.add_argument("--canvas", required=True, metavar="<class>", help="canvas class of the sprite")
     import_.add_argument("--id", metavar="<id>", help="sprite id (default: the PNG file stem)")
-    import_.add_argument("--scale", type=_positive_int, metavar="N", help="the PNG is enlarged N times; shrink it first")
+    import_.add_argument("--scale", type=_positive_int, metavar="N", help="enlarge the PNG N times before importing (default: 1)")
     import_.add_argument("--snap", action="store_true", help="snap each pixel to the nearest palette colour")
 
     return parser
