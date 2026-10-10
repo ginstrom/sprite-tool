@@ -39,7 +39,7 @@ Every task file repeats these.
 |---|---|---|---|---|
 | 01 | [Runs](01-runs.md) | `runs` in a frame table; `from` optional | none | done |
 | 02 | [Automatic outline](02-auto-outline.md) | `outline = "auto"` draws the outline; edge faults reported with their own wording | 01 | done |
-| 03 | [`build = false`](03-build-false.md) | A sprite that is checked and previewed and never exported | none | pending |
+| 03 | [`build = false`](03-build-false.md) | A sprite that is checked and previewed and never exported | none | done |
 | 04 | [Adopt by id](04-adopt-by-id.md) | `build --adopt [id ...]`, `adopted` lines, new stop message | 03 | pending |
 | 05 | [Export index, demo sprites and golden files](05-export-index-demo-golden.md) | `sprites.json` in `frames`, `canvas` and `bounds` in the `godot` index, two new demo sprites, regenerated golden files | 01, 02, 03 | pending |
 | 06 | [Preview at game size](06-preview-game-size.md) | Game-size frames beside the enlarged ones; `--scale display` | none | pending |
@@ -171,3 +171,13 @@ record it there.
   - The edge wording is used for every E201 of an auto sprite that is not a variant, including a derived frame that `shift` moved onto the edge (`frame 'lean' row 2, col 0: ...`).
   - Step 07: the old E001 text `outline must be true or false` is now `outline must be true, false or "auto"`.
 - **No other deviation** from the task file.
+
+### Step 03: `build = false` (2026-10-10, commit `770e1f2`)
+
+- **Evidence.** `uv run pytest tests/test_build.py tests/test_spritefile.py`: 244 passed. `make check`: 1004 passed (992 before the step), then `ok: 4 sprites, 6 frames`. `git status` shows no change under `examples/demo/` or `tests/golden/` (the integration checkpoint after 03).
+- **Criteria.** A25 is the `test_a25_*` tests: nine in `tests/test_build.py`, on a copy of the demo with `scout` (the goblin's file plus a `pale` variant) added by `add_scout`, and two in `tests/test_spritefile.py` for the field. Each clause of the task's verification list has one; `build --check` reporting the stale files before the rebuild has its own as well.
+- **Choices later steps may meet.**
+  - `build = "no"` is reported and the sprite is then read as `build = true`, which is what `_flag` does for `outline` and `grounded`.
+  - The filter in `cli._build` is one list comprehension with the blank-sprite filter: `sprite.build and not check.is_blank(sprite)`. Step 04 validates adopt ids against the list it leaves.
+  - `ALL_TARGETS` in `tests/test_build.py` configures the three target types in one project; step 05 can use it.
+- **No deviation** from the task file. `check.py`, `preview.py` and the exporters are unchanged.
