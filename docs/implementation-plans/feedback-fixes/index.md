@@ -193,5 +193,5 @@ record it there.
   - The path in the stop message is still the directory joined to the name, as it was at 0.2.0 (absolute when `out` resolves to an absolute path). Only the `adopted` lines go through `cli._from_cwd`.
   - An unknown id is reported even when no file needs adopting, and with no sprites in the build the list reads `(sprites: none)`, as in `cli._preview`.
   - Giving an id twice is accepted.
-  - Steps 07 and 08: the guide, the README and `AGENTS.md` still describe the bare `--adopt` and the old one-line output rule.
+  - Steps 07 and 08: the README still describes only the bare `--adopt` (command table and the safe-writes section), `AGENTS.md` still has the old output rule, and the guide does not mention `--adopt` at all.
 - **No deviation** from the task file.
