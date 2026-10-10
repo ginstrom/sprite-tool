@@ -38,7 +38,7 @@ Every task file repeats these.
 | Step | Task | Outcome | Depends on | Status |
 |---|---|---|---|---|
 | 01 | [Runs](01-runs.md) | `runs` in a frame table; `from` optional | none | done |
-| 02 | [Automatic outline](02-auto-outline.md) | `outline = "auto"` draws the outline; edge faults reported with their own wording | 01 | pending |
+| 02 | [Automatic outline](02-auto-outline.md) | `outline = "auto"` draws the outline; edge faults reported with their own wording | 01 | done |
 | 03 | [`build = false`](03-build-false.md) | A sprite that is checked and previewed and never exported | none | pending |
 | 04 | [Adopt by id](04-adopt-by-id.md) | `build --adopt [id ...]`, `adopted` lines, new stop message | 03 | pending |
 | 05 | [Export index, demo sprites and golden files](05-export-index-demo-golden.md) | `sprites.json` in `frames`, `canvas` and `bounds` in the `godot` index, two new demo sprites, regenerated golden files | 01, 02, 03 | pending |
@@ -158,3 +158,16 @@ record it there.
   - `rows` without `from` is accepted as well (the frame starts transparent), as the task's "`from` is optional" implies.
   - An empty run list (`9 = []`) is accepted and writes nothing.
 - **No deviation** from the task file.
+
+### Step 02: Automatic outline (2026-10-10, commit `3953d33`)
+
+- **Evidence.** `uv run pytest tests/test_spritefile.py tests/test_check.py tests/test_project.py`: 349 passed. `make check`: 992 passed (957 before the step), then `ok: 4 sprites, 6 frames`. `git status` shows no change under `examples/demo/` or `tests/golden/`. A scratch project with one auto-outlined runs sprite: `sprite check` and `sprite build` exit 0 and the PNG holds the outline; with an interior pixel in column 0, `check` prints the one E201 line and exits 1.
+- **Criteria.** A16 is `test_a16_auto_outlined_sprite_passes_and_renders_as_its_hand_outlined_twin` and A17 is `test_a17_interior_pixel_on_the_canvas_edge_of_an_auto_sprite_is_e201_at_that_pixel`, both in `tests/test_check.py`.
+- **One existing test changed.** `test_load_valid_project` in `tests/test_project.py` compares whole `Canvas` values, so its expected `unit` canvas now has `outline_key="k"`. The task file expected no existing test to change; this one follows from the new field and nothing else did.
+- **Choices later steps may meet.**
+  - The outline pass is in `_Parser.parse`, on the tuple of resolved frames, not inside `_Parser._frames`. The effect is the one the task file asks for: every frame is resolved on interiors first.
+  - `outline = "auto"` on a class with `outline = []` is read as `outline = true` after its E001 (plan decision P3), so `Sprite.outline` is true there and `check` would report every edge pixel against the empty list. On a class with no rule `Sprite.outline` is false.
+  - A grid frame of an auto sprite stays `literal` with its line, so its E201 is at the pixel's own line and column.
+  - The edge wording is used for every E201 of an auto sprite that is not a variant, including a derived frame that `shift` moved onto the edge (`frame 'lean' row 2, col 0: ...`).
+  - Step 07: the old E001 text `outline must be true or false` is now `outline must be true, false or "auto"`.
+- **No other deviation** from the task file.
