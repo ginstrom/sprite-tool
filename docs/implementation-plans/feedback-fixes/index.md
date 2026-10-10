@@ -37,7 +37,7 @@ Every task file repeats these.
 
 | Step | Task | Outcome | Depends on | Status |
 |---|---|---|---|---|
-| 01 | [Runs](01-runs.md) | `runs` in a frame table; `from` optional | none | pending |
+| 01 | [Runs](01-runs.md) | `runs` in a frame table; `from` optional | none | done |
 | 02 | [Automatic outline](02-auto-outline.md) | `outline = "auto"` draws the outline; edge faults reported with their own wording | 01 | pending |
 | 03 | [`build = false`](03-build-false.md) | A sprite that is checked and previewed and never exported | none | pending |
 | 04 | [Adopt by id](04-adopt-by-id.md) | `build --adopt [id ...]`, `adopted` lines, new stop message | 03 | pending |
@@ -142,4 +142,19 @@ record it there.
 
 ## Completion log
 
-Nothing yet.
+### Step 01: Runs (2026-10-10, commit `610d7af`)
+
+- **Evidence.** `uv run pytest tests/test_spritefile.py`: 177 passed. `make check`: 957 passed (900 before the step), then `ok: 4 sprites, 6 frames`. `git status` shows no change under `examples/demo/` or `tests/golden/`.
+- **Criteria.** A18 and A19 are tested on the parsed grid in `tests/test_spritefile.py` and on the rendered PNGs in `tests/test_build.py`. A20 is `test_a20_bad_run_is_one_line_at_its_row_and_drops_the_frame`, each case in the inline and the table form.
+- **Wording chosen where the task file gave none.**
+  - A row whose value is not a list of pairs: E001 `frame 'x' row 1: runs must be a list of [column, "pixels"] pairs`.
+  - An empty pixel string: E001 `frame 'x' row 1: run at col 1 has no pixels`.
+  - `runs` that is not a table: E001 at the `runs` key.
+  - A negative column is the same E103 as a run past the right edge (`run at col -1 is 1 wide, ...`).
+  - `from` of the wrong type now reads `from must be a frame name`; a frame of the wrong type reads `must be a grid string or a table with from, rows or runs`.
+- **Choices later steps may meet.**
+  - The `N more unknown palette keys` line goes to the line of `rows` when the table has `rows`, otherwise to the line of `runs`.
+  - `Frame.line` of a table frame is the line of `rows` if it has one, else the frame's own header, else its `[frames.<name>.runs]` header.
+  - `rows` without `from` is accepted as well (the frame starts transparent), as the task's "`from` is optional" implies.
+  - An empty run list (`9 = []`) is accepted and writes nothing.
+- **No deviation** from the task file.
