@@ -1,6 +1,9 @@
 from pathlib import Path
 
 import pytest
+from PIL import Image
+
+from sprite_tool.model import Canvas, Frame, Sprite
 
 VALID_CONFIG = """\
 version = 1
@@ -67,3 +70,35 @@ def write_project(root: Path, config: str = VALID_CONFIG, palette: str | None = 
 @pytest.fixture
 def project_dir(tmp_path: Path) -> Path:
     return write_project(tmp_path / "game" / "sprites")
+
+
+def make_frame(name: str, *rows: str) -> Frame:
+    return Frame(name=name, rows=tuple(rows), line=0, literal=True)
+
+
+def make_sprite(sprite_id: str, *frames: Frame) -> Sprite:
+    """A sprite on a canvas the size of its first frame, with no style rules."""
+    canvas = Canvas(
+        name="tiny",
+        width=len(frames[0].rows[0]),
+        height=len(frames[0].rows),
+        anchor=(0, 0),
+        display_scale=1,
+        outline=None,
+        grounded=False,
+    )
+    return Sprite(
+        id=sprite_id,
+        source=Path(f"{sprite_id}.sprite.toml"),
+        canvas=canvas,
+        frames=tuple(frames),
+        anims=(),
+        outline=False,
+        grounded=False,
+        variant_of=None,
+    )
+
+
+def pixels(image: Image.Image) -> list[tuple[int, ...]]:
+    """Every pixel of `image`, row by row."""
+    return list(image.get_flattened_data())

@@ -45,5 +45,11 @@ Everything runs through `uv`.
   one entry in `HANDLERS`; a handler takes the parsed arguments and returns
   the exit code. Handlers call `load_project(args)` to resolve and load the
   project.
+- `src/sprite_tool/render.py`: frames to RGBA images. `png_bytes` is the only
+  place PNGs are encoded for export.
+- `src/sprite_tool/pack.py`: the shelf packer. Works on sizes only.
+- `src/sprite_tool/export/atlas.py`: `compose_sheet`, the one sheet layout
+  shared by the atlas targets.
 - `tests/conftest.py`: `write_project` and the `project_dir` fixture for
-  building a project under `tmp_path`.
+  building a project under `tmp_path`; `make_frame`, `make_sprite` and
+  `pixels` for tests that build sprites directly.

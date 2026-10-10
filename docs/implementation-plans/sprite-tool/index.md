@@ -33,7 +33,7 @@ Every task file repeats the ones that apply to it.
 | 01 | [Scaffold, model and project loading](01-scaffold-model-project.md) | Installable package, `sprite` CLI skeleton with all subcommands declared, data model, config and palette loading | none | done |
 | 02 | [Sprite file parser](02-sprite-file-parser.md) | `*.sprite.toml` parsed into sprites with derived frames, variants and source positions | 01 | done |
 | 03 | [Checks, `check` command and demo project](03-checks-and-demo.md) | Style and PNG checks, working `sprite check`, `examples/demo/` sources | 02 | pending |
-| 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | pending |
+| 04 | [Render, pack and sheet composition](04-render-pack-sheet.md) | Deterministic frame rendering, PNG encoding, shelf packer, atlas sheet helper | 01 | done |
 | 05 | [Build pipeline, manifest and `frames` target](05-build-manifest-frames.md) | Working `sprite build` with `--check` and `--adopt`, safe writes, loose PNG export | 03, 04 | pending |
 | 06 | [Phaser export](06-phaser-export.md) | `phaser` target: sheet, JSON Hash atlas, animation JSON | 05 | pending |
 | 07 | [Godot export](07-godot-export.md) | `godot` target: sheet, `SpriteFrames` `.tres` per sprite, index JSON | 05 | pending |
@@ -160,6 +160,34 @@ If you depart from a default in **Decisions made while planning**, record it
 there.
 
 ## Completion log
+
+### Step 04, 2026-10-10, commits `c3c0d17`, `ed9ed22`, and the commit that adds this entry
+
+**Evidence**
+
+- `make test`: 510 passed (243 before the step; 6 new in `tests/test_render.py`, 252 in `tests/test_pack.py`, 9 in `tests/test_atlas.py`). `make check`: same.
+- Packer properties run over 40 seeded inputs each (mixed sizes, padding 0, 1, 2 or 4): every item placed once, inside the sheet, `padding` from the edge and from each other, width a power of two of at least 64 and the smallest that qualifies, height no greater than width, same result when the sprites are shuffled. Removing the padding from the packer's x step fails 33 of these tests.
+- The worked example is `test_worked_example`: `(1, 1)` and `(34, 1)` on a 128 x 34 sheet.
+- `test_png_bytes_writes_no_metadata_chunks`: the PNG holds only `IHDR`, `IDAT`, `IEND`, even when the image carries `dpi`, an ICC profile and a comment in `image.info`.
+
+**Names later steps need**
+
+- `render.render`, `render.render_all`, `render.png_bytes`, `pack.pack` and `export.atlas.compose_sheet`, with the signatures in the task file. `render.TRANSPARENT` is `(0, 0, 0, 0)`; `render.COMPRESS_LEVEL` is 6.
+- `src/sprite_tool/export/__init__.py` is empty.
+- `tests/conftest.py` has `make_frame(name, *rows)`, `make_sprite(sprite_id, *frames)` (canvas sized from the first frame, no style rules) and `pixels(image)`, for tests that build sprites without a file.
+
+**Choices the task file left open**
+
+- **A frame fits a shelf when `x + w + padding <= sheet_w`.** A frame wider than `sheet_w - 2 * padding` widens the sheet.
+- **Empty input** gives `(64, max(1, 2 * padding), [])`, so the sheet is at least one pixel high and always a valid image. `compose_sheet([], {}, 1)` is a transparent 64 x 2 PNG.
+- **Negative padding** raises `ValueError` in `pack`. `project.py` already refuses it in config.
+- **`png_bytes` accepts any image mode** and converts to RGBA. It drops `image.info`, so an image opened from a file can be passed in safely.
+- **`compose_sheet` takes each frame's size from its image**, not from the canvas. Frames are pasted without a mask, so semi-transparent pixels are copied, not blended.
+- **Placements are in packing order** (height descending, sprite id, frame order), not input order.
+
+**Notes**
+
+- Pillow 12.3 deprecates `Image.getdata` (removal in Pillow 14); tests use `get_flattened_data`.
 
 ### Step 02, 2026-10-10, commits `70102ca`, `8309e87`, `d19b22c`
 

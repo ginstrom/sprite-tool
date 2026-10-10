@@ -1,10 +1,12 @@
 import io
 import struct
-from pathlib import Path
 
 from PIL import Image
 
-from sprite_tool.model import Canvas, Color, Frame, Sprite
+from conftest import make_frame as frame
+from conftest import make_sprite as sprite
+from conftest import pixels
+from sprite_tool.model import Color
 from sprite_tool.render import png_bytes, render, render_all
 
 BLACK = (0, 0, 0, 255)
@@ -18,36 +20,6 @@ PALETTE = {
     # Written as "#11223380" in a palette file.
     "g": Color(key="g", rgba=GLASS, name="glass"),
 }
-
-
-def frame(name, *rows):
-    return Frame(name=name, rows=tuple(rows), line=0, literal=True)
-
-
-def sprite(sprite_id, *frames):
-    canvas = Canvas(
-        name="tiny",
-        width=len(frames[0].rows[0]),
-        height=len(frames[0].rows),
-        anchor=(0, 0),
-        display_scale=1,
-        outline=None,
-        grounded=False,
-    )
-    return Sprite(
-        id=sprite_id,
-        source=Path(f"{sprite_id}.sprite.toml"),
-        canvas=canvas,
-        frames=tuple(frames),
-        anims=(),
-        outline=False,
-        grounded=False,
-        variant_of=None,
-    )
-
-
-def pixels(image):
-    return list(image.get_flattened_data())
 
 
 def chunk_types(data):
