@@ -1,8 +1,10 @@
 {
   "targets": {
-    "frames": [
+    "frames:sprites": [
       "goblin.png",
       "ground_light.png",
+      "slime.png",
+      "sprites.json",
       "warrior.png",
       "warrior__idle_0.png",
       "warrior__idle_1.png",

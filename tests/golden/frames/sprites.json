@@ -1,0 +1,170 @@
+{
+  "goblin": {
+    "anchor": [
+      16,
+      32
+    ],
+    "bounds": [
+      4,
+      3,
+      26,
+      29
+    ],
+    "canvas": "unit",
+    "display_scale": 2,
+    "file": "goblin.png",
+    "frames": {
+      "main": {
+        "bounds": [
+          4,
+          3,
+          26,
+          29
+        ],
+        "file": "goblin.png"
+      }
+    },
+    "size": [
+      32,
+      32
+    ]
+  },
+  "ground_light": {
+    "anchor": [
+      0,
+      0
+    ],
+    "bounds": [
+      0,
+      0,
+      16,
+      16
+    ],
+    "canvas": "tile",
+    "display_scale": 4,
+    "file": "ground_light.png",
+    "frames": {
+      "main": {
+        "bounds": [
+          0,
+          0,
+          16,
+          16
+        ],
+        "file": "ground_light.png"
+      }
+    },
+    "size": [
+      16,
+      16
+    ]
+  },
+  "slime": {
+    "anchor": [
+      16,
+      32
+    ],
+    "bounds": [
+      5,
+      16,
+      22,
+      16
+    ],
+    "canvas": "unit",
+    "display_scale": 2,
+    "file": "slime.png",
+    "frames": {
+      "main": {
+        "bounds": [
+          5,
+          16,
+          22,
+          16
+        ],
+        "file": "slime.png"
+      }
+    },
+    "size": [
+      32,
+      32
+    ]
+  },
+  "warrior": {
+    "anchor": [
+      16,
+      32
+    ],
+    "bounds": [
+      7,
+      1,
+      22,
+      31
+    ],
+    "canvas": "unit",
+    "display_scale": 2,
+    "file": "warrior.png",
+    "frames": {
+      "idle_0": {
+        "bounds": [
+          7,
+          1,
+          22,
+          31
+        ],
+        "file": "warrior__idle_0.png"
+      },
+      "idle_1": {
+        "bounds": [
+          7,
+          1,
+          22,
+          31
+        ],
+        "file": "warrior__idle_1.png"
+      }
+    },
+    "size": [
+      32,
+      32
+    ]
+  },
+  "warrior_red": {
+    "anchor": [
+      16,
+      32
+    ],
+    "bounds": [
+      7,
+      1,
+      22,
+      31
+    ],
+    "canvas": "unit",
+    "display_scale": 2,
+    "file": "warrior_red.png",
+    "frames": {
+      "idle_0": {
+        "bounds": [
+          7,
+          1,
+          22,
+          31
+        ],
+        "file": "warrior_red__idle_0.png"
+      },
+      "idle_1": {
+        "bounds": [
+          7,
+          1,
+          22,
+          31
+        ],
+        "file": "warrior_red__idle_1.png"
+      }
+    },
+    "size": [
+      32,
+      32
+    ]
+  }
+}

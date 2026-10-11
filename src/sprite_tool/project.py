@@ -22,6 +22,8 @@ DEFAULT_PALETTE = "palette.toml"
 DEFAULT_PREVIEW_SCALE = 6
 DEFAULT_PREVIEW_BACKGROUND = "#3a3a3a"
 DEFAULT_ATLAS_NAME = "atlas"
+# The JSON index of a `frames` target.
+DEFAULT_INDEX_NAME = "sprites"
 DEFAULT_PADDING = 1
 
 _HEX_RE = re.compile(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
@@ -237,7 +239,7 @@ def _load_export(index: int, table: dict[str, Any], root: Path) -> ExportTarget:
             raise ConfigError(f"{CONFIG_NAME}: {where}type is required (one of {expected})")
         raise ConfigError(f"{CONFIG_NAME}: {where}unknown type {kind!r} (expected one of {expected})")
 
-    allowed = {"frames": (), "phaser": ("name", "padding"), "godot": ("name", "res_path", "padding")}[kind]
+    allowed = {"frames": ("name",), "phaser": ("name", "padding"), "godot": ("name", "res_path", "padding")}[kind]
     for key in ("name", "res_path", "padding"):
         if key in table and key not in allowed:
             raise ConfigError(f"{CONFIG_NAME}: {where}{key} is not used by type {kind!r}")
@@ -246,13 +248,10 @@ def _load_export(index: int, table: dict[str, Any], root: Path) -> ExportTarget:
     if not isinstance(out, str) or not out:
         raise ConfigError(f"{CONFIG_NAME}: {where}out is required and must be a path string")
 
-    name = None
-    padding = 0
-    if kind in ATLAS_TYPES:
-        name = table.get("name", DEFAULT_ATLAS_NAME)
-        if not isinstance(name, str) or not name:
-            raise ConfigError(f"{CONFIG_NAME}: {where}name must be a non-empty string")
-        padding = _int_at_least(table, "padding", 0, DEFAULT_PADDING, where)
+    name = table.get("name", DEFAULT_ATLAS_NAME if kind in ATLAS_TYPES else DEFAULT_INDEX_NAME)
+    if not isinstance(name, str) or not name:
+        raise ConfigError(f"{CONFIG_NAME}: {where}name must be a non-empty string")
+    padding = _int_at_least(table, "padding", 0, DEFAULT_PADDING, where) if kind in ATLAS_TYPES else 0
 
     res_path = None
     if kind == "godot":

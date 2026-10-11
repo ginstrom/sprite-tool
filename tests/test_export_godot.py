@@ -15,6 +15,7 @@ from sprite_tool import spritefile
 from sprite_tool.cli import main
 from sprite_tool.export import EXPORTERS
 from sprite_tool.export import godot as godot_export
+from sprite_tool.export.index import bounds, union
 from sprite_tool.manifest import MANIFEST_NAME
 from sprite_tool.model import Anim, Color, ExportTarget
 from sprite_tool.project import load
@@ -27,7 +28,7 @@ PALETTE = {
     "w": Color(key="w", rgba=(255, 255, 255, 255), name=None),
 }
 
-SPRITE_IDS = ["goblin", "ground_light", "warrior", "warrior_red"]
+SPRITE_IDS = ["goblin", "ground_light", "slime", "warrior", "warrior_red"]
 
 # The example in the design, section 4.7.
 WARRIOR_TRES = """\
@@ -102,10 +103,11 @@ def hero(*anims: Anim, sprite_id: str = "hero"):
 
 @pytest.fixture(scope="module")
 def demo():
-    """The demo project's sprites, their rendered frames and the exported files."""
+    """The demo project's exported sprites, their rendered frames and the exported files."""
     project, problems = load(DEMO)
     sprites, sprite_problems = spritefile.load_all(project)
     assert problems == [] and sprite_problems == []
+    sprites = [sprite for sprite in sprites if sprite.build]
     images = render_all(sprites, project.palette)
     return sprites, images, godot_export.export(sprites, images, target())
 
@@ -248,13 +250,14 @@ def test_a_res_path_ending_in_a_slash_gets_no_second_one(res_path):
 # --- atlas.json -------------------------------------------------------------
 
 
-def test_index_has_anchor_size_display_scale_and_frames_for_every_sprite(demo, index):
+def test_index_has_canvas_facts_bounds_and_frames_for_every_sprite(demo, index):
     sprites, _, files = demo
     assert sorted(index) == SPRITE_IDS
     for sprite in sprites:
         entry = index[sprite.id]
         regions = parse(files[f"{sprite.id}.tres"])["regions"]
-        assert sorted(entry) == ["anchor", "display_scale", "frames", "size"]
+        assert sorted(entry) == ["anchor", "bounds", "canvas", "display_scale", "frames", "size"]
+        assert entry["canvas"] == sprite.canvas.name
         assert entry["anchor"] == list(sprite.canvas.anchor)
         assert entry["display_scale"] == sprite.canvas.display_scale
         assert entry["size"] == [sprite.canvas.width, sprite.canvas.height]
@@ -270,6 +273,15 @@ def test_index_values_for_the_demo_warrior_and_tile(index):
     assert sorted(index["warrior"]["frames"]) == ["idle_0", "idle_1"]
     assert index["ground_light"]["anchor"] == [0, 0]
     assert index["ground_light"]["display_scale"] == 4
+
+
+def test_index_bounds_is_the_box_of_all_the_sprites_frames(demo, index):
+    assert index["goblin"]["bounds"] == [4, 3, 26, 29]
+    assert index["goblin"]["canvas"] == "unit"
+    assert index["ground_light"]["bounds"] == [0, 0, 16, 16]
+    assert index["ground_light"]["canvas"] == "tile"
+    for sprite in demo[0]:
+        assert index[sprite.id]["bounds"] == union(bounds(frame.rows) for frame in sprite.frames)
 
 
 def test_a14_units_and_the_tile_share_one_sheet_at_their_own_sizes(demo, index):
@@ -341,7 +353,7 @@ def test_build_writes_the_godot_target(tmp_path, capsys):
     )
 
     assert main(["build", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 1 target\n"
+    assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 1 target\n"
     out = root / "out" / "sprites"
     assert sorted(path.name for path in out.iterdir()) == sorted(
         [MANIFEST_NAME, "units.json", "units.png", *(f"{sprite_id}.tres" for sprite_id in SPRITE_IDS)]
@@ -363,7 +375,7 @@ def test_godot_and_frames_targets_share_a_directory(tmp_path, capsys):
     )
 
     assert main(["build", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 2 targets\n"
+    assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 2 targets\n"
     names = {path.name for path in (root / "out").iterdir()}
     assert {"atlas.png", "atlas.json", "warrior.tres", "warrior.png", "warrior__idle_0.png"} <= names
 
@@ -451,6 +463,7 @@ def test_a7_godot_loads_each_resource_as_sprite_frames(tmp_path, capsys):
     assert [line for line in loaded.stdout.splitlines() if line.startswith("ANIM ")] == [
         f"ANIM goblin default 1 1.0 true {region('goblin', 'main')}",
         f"ANIM ground_light default 1 1.0 true {region('ground_light', 'main')}",
+        f"ANIM slime default 1 1.0 true {region('slime', 'main')}",
         f"ANIM warrior idle 2 2.5 true {region('warrior', 'idle_0')}",
         f"ANIM warrior_red idle 2 2.5 true {region('warrior_red', 'idle_0')}",
     ]

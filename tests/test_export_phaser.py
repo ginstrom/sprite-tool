@@ -27,6 +27,7 @@ PALETTE = {
 FRAME_KEYS = [
     "goblin/main",
     "ground_light/main",
+    "slime/main",
     "warrior/idle_0",
     "warrior/idle_1",
     "warrior_red/idle_0",
@@ -48,10 +49,11 @@ def export(*sprites, **options) -> dict[str, bytes]:
 
 @pytest.fixture(scope="module")
 def demo():
-    """The demo project's sprites, their rendered frames and the exported files."""
+    """The demo project's exported sprites, their rendered frames and the exported files."""
     project, problems = load(DEMO)
     sprites, sprite_problems = spritefile.load_all(project)
     assert problems == [] and sprite_problems == []
+    sprites = [sprite for sprite in sprites if sprite.build]
     images = render_all(sprites, project.palette)
     return sprites, images, phaser_export.export(sprites, images, target())
 
@@ -266,7 +268,7 @@ def test_build_writes_the_phaser_target(tmp_path, capsys):
     )
 
     assert main(["build", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 1 target\n"
+    assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 1 target\n"
     out = root / "out" / "sprites"
     assert sorted(path.name for path in out.iterdir()) == sorted(
         [MANIFEST_NAME, "units.anims.json", "units.json", "units.png"]

@@ -23,7 +23,7 @@ def json_bytes(obj: Any) -> bytes:
 
 
 def target_key(target: ExportTarget) -> str:
-    """The name of a target in the manifest and in messages: `frames`, `phaser:atlas`."""
+    """The name of a target in the manifest and in messages: `frames:sprites`, `phaser:atlas`."""
     return target.type if target.name is None else f"{target.type}:{target.name}"
 
 

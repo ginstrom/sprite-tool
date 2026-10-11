@@ -57,7 +57,7 @@ def test_load_valid_project(project_dir):
     assert project.preview == PreviewConfig(scale=6, background=(0x3A, 0x3A, 0x3A, 255))
     game = project_dir.parent
     assert project.exports == (
-        ExportTarget(type="frames", out=game / "assets" / "frames", name=None, res_path=None, padding=0),
+        ExportTarget(type="frames", out=game / "assets" / "frames", name="sprites", res_path=None, padding=0),
         ExportTarget(
             type="phaser", out=game / "public" / "assets" / "sprites", name="atlas", res_path=None, padding=1
         ),
@@ -179,7 +179,8 @@ BAD_CONFIGS = {
     "export out empty": (replaced('out = "../assets/frames"', 'out = ""'), "out"),
     "export name not a string": (replaced('name = "atlas"', "name = 1"), "name"),
     "export name empty": (replaced('name = "atlas"', 'name = ""'), "name"),
-    "name on frames": (replaced('out = "../assets/frames"', 'out = "../assets/frames"\nname = "x"'), "name"),
+    "name on frames not a string": (replaced('out = "../assets/frames"', 'out = "../assets/frames"\nname = 1'), "name"),
+    "name on frames empty": (replaced('out = "../assets/frames"', 'out = "../assets/frames"\nname = ""'), "name"),
     "padding on frames": (replaced('out = "../assets/frames"', 'out = "../assets/frames"\npadding = 1'), "padding"),
     "res_path missing for godot": (replaced('res_path = "res://assets/sprites"\n', ""), "res_path"),
     "res_path not a string": (replaced('res_path = "res://assets/sprites"', "res_path = 1"), "res_path"),
@@ -207,6 +208,12 @@ def test_missing_palette_raises_config_error(tmp_path):
     root = write_project(tmp_path, palette=None)
     with pytest.raises(ConfigError, match="palette.toml"):
         load(root)
+
+
+def test_a_frames_target_takes_a_name_for_its_index(tmp_path):
+    config = MINIMAL_CONFIG + '\n[[export]]\ntype = "frames"\nout = "out"\nname = "units"\n'
+    project, _ = load(write_project(tmp_path, config))
+    assert project.exports[0].name == "units"
 
 
 def test_colliding_export_directories_are_not_checked_here(tmp_path):

@@ -376,7 +376,7 @@ def test_guide_example_is_a_valid_sprite_file_for_the_demo(tmp_path, capsys):
     assert EXAMPLE in guide(root, capsys)
 
     assert main(["check", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "ok: 6 sprites, 10 frames\n"
+    assert capsys.readouterr().out == "ok: 8 sprites, 12 frames\n"
 
 
 def test_guide_reflects_the_project(tmp_path, capsys):

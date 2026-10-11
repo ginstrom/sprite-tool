@@ -21,6 +21,8 @@ DEMO_FILES = [
     MANIFEST_NAME,
     "goblin.png",
     "ground_light.png",
+    "slime.png",
+    "sprites.json",
     "warrior.png",
     "warrior__idle_0.png",
     "warrior__idle_1.png",
@@ -28,6 +30,7 @@ DEMO_FILES = [
     "warrior_red__idle_0.png",
     "warrior_red__idle_1.png",
 ]
+DEMO_PNGS = [name for name in DEMO_FILES if name.endswith(".png")]
 
 BLUE, DARK_BLUE = (0x3B, 0x5D, 0xC9, 255), (0x29, 0x36, 0x6F, 255)
 RED, DARK_RED = (0xB1, 0x3E, 0x53, 255), (0x5D, 0x27, 0x5D, 255)
@@ -88,20 +91,20 @@ def break_goblin(root: Path) -> None:
 def test_build_writes_the_frames_target(demo, capsys):
     assert run(demo) == 0
     captured = capsys.readouterr()
-    assert captured.out == "built: 4 sprites, 6 frames, 1 target\n"
+    assert captured.out == "built: 5 sprites, 7 frames, 1 target\n"
     assert captured.err == ""
 
     out = demo / "out" / "frames"
     assert sorted(tree(out)) == sorted(DEMO_FILES)
     manifest = json.loads((out / MANIFEST_NAME).read_text(encoding="utf-8"))
-    assert manifest == {"targets": {"frames": sorted(DEMO_FILES[1:])}, "version": 1}
+    assert manifest == {"targets": {"frames:sprites": sorted(DEMO_FILES[1:])}, "version": 1}
 
 
 def test_frames_are_full_canvas_size(demo):
     run(demo)
     out = demo / "out" / "frames"
     assert image(out / "ground_light.png").size == (16, 16)
-    for name in DEMO_FILES[1:]:
+    for name in DEMO_PNGS:
         if name != "ground_light.png":
             assert image(out / name).size == (32, 32), name
 
@@ -175,7 +178,7 @@ def test_a5_red_variant_is_the_base_with_its_colours_swapped(demo):
 def test_a2_palette_change_recolours_that_key_and_nothing_else(demo):
     run(demo)
     out = demo / "out" / "frames"
-    before = {name: pixels(image(out / name)) for name in DEMO_FILES[1:]}
+    before = {name: pixels(image(out / name)) for name in DEMO_PNGS}
     new = (0x12, 0x34, 0x56, 255)
 
     edit(demo / "palette.toml", "#3b5dc9", "#123456")
@@ -195,7 +198,7 @@ def test_a_second_build_rewrites_no_file(demo, capsys):
         os.utime(path, (long_ago, long_ago))
 
     assert run(demo) == 0
-    assert capsys.readouterr().out.endswith("built: 4 sprites, 6 frames, 1 target\n")
+    assert capsys.readouterr().out.endswith("built: 5 sprites, 7 frames, 1 target\n")
     assert {path.name for path in out.iterdir() if path.stat().st_mtime != long_ago} == set()
 
 
@@ -216,7 +219,7 @@ def test_only_changed_files_are_rewritten(demo):
 def test_zero_targets_is_valid(demo, capsys):
     set_exports(demo, "")
     assert run(demo) == 0
-    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 0 targets\n"
+    assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 0 targets\n"
     assert not (demo / "out").exists()
 
 
@@ -232,7 +235,7 @@ def test_warnings_are_printed_and_do_not_stop_the_build(demo, capsys):
     lines = capsys.readouterr().out.splitlines()
     assert len(lines) == 2
     assert "W001" in lines[0]
-    assert lines[1] == "built: 4 sprites, 6 frames, 1 target"
+    assert lines[1] == "built: 5 sprites, 7 frames, 1 target"
     assert (demo / "out" / "frames" / "goblin.png").exists()
 
 
@@ -279,8 +282,10 @@ def test_a12_deleted_sprite_is_cleaned_up_and_other_files_are_left(demo, capsys)
     capsys.readouterr()
     assert run(demo) == 0
 
-    assert capsys.readouterr().out == "built: 2 sprites, 2 frames, 1 target\n"
-    assert sorted(tree(out)) == sorted([MANIFEST_NAME, "goblin.png", "ground_light.png", "notes.txt"])
+    assert capsys.readouterr().out == "built: 3 sprites, 3 frames, 1 target\n"
+    assert sorted(tree(out)) == sorted(
+        [MANIFEST_NAME, "goblin.png", "ground_light.png", "notes.txt", "slime.png", "sprites.json"]
+    )
     assert (out / "notes.txt").read_text() == "mine"
 
 
@@ -308,10 +313,10 @@ def test_adopt_takes_ownership_of_existing_files(demo, capsys):
 
     assert run(demo, "--adopt") == 0
 
-    assert capsys.readouterr().out == f"adopted {out / 'goblin.png'}\nbuilt: 4 sprites, 6 frames, 1 target\n"
+    assert capsys.readouterr().out == f"adopted {out / 'goblin.png'}\nbuilt: 5 sprites, 7 frames, 1 target\n"
     assert image(out / "goblin.png").size == (32, 32)
     manifest = json.loads((out / MANIFEST_NAME).read_text(encoding="utf-8"))
-    assert "goblin.png" in manifest["targets"]["frames"]
+    assert "goblin.png" in manifest["targets"]["frames:sprites"]
     assert run(demo) == 0
 
 
@@ -347,7 +352,7 @@ def test_a23_adopting_every_id_with_a_file_builds_and_names_each_adopted_file(de
     assert capsys.readouterr().out.splitlines() == [
         "adopted out/frames/goblin.png",
         "adopted out/frames/warrior.png",
-        "built: 4 sprites, 6 frames, 1 target",
+        "built: 5 sprites, 7 frames, 1 target",
     ]
     assert sorted(tree(out)) == sorted(DEMO_FILES)
     assert image(out / "warrior.png").size == (32, 32)
@@ -360,7 +365,7 @@ def test_a24_adopting_an_unknown_id_exits_2_and_writes_nothing(demo, capsys):
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == "error: unknown sprite id 'nosuch' (sprites: goblin, ground_light, warrior, warrior_red)\n"
+    assert captured.err == "error: unknown sprite id 'nosuch' (sprites: goblin, ground_light, slime, warrior, warrior_red)\n"
     assert tree(out) == {"goblin.png": b"hand made"}
 
 
@@ -383,7 +388,7 @@ def test_bare_adopt_names_every_file_it_took_sorted_by_directory_then_name(demo,
         f"adopted {out / 'goblin.png'}",
         f"adopted {out / 'warrior__idle_0.png'}",
         f"adopted {more / 'ground_light.png'}",
-        "built: 4 sprites, 6 frames, 2 targets",
+        "built: 5 sprites, 7 frames, 2 targets",
     ]
 
 
@@ -394,7 +399,7 @@ def test_adopt_names_nothing_when_there_was_nothing_to_take(demo, capsys):
 
     for flags in ([], ["--adopt"], ["--adopt", "goblin"]):
         assert run(demo, *flags) == 0
-        assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 1 target\n"
+        assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 1 target\n"
 
 
 def test_adopting_a_sprite_does_not_take_its_variants_files(demo, capsys):
@@ -418,7 +423,7 @@ def test_a_variant_is_adopted_by_its_own_id(demo, capsys):
     assert capsys.readouterr().out.splitlines() == [
         f"adopted {out / 'warrior_red.png'}",
         f"adopted {out / 'warrior_red__idle_0.png'}",
-        "built: 4 sprites, 6 frames, 1 target",
+        "built: 5 sprites, 7 frames, 1 target",
     ]
 
 
@@ -432,7 +437,7 @@ def test_adopt_warnings_come_before_the_adopted_lines(demo, capsys):
     warning, adopted, summary = capsys.readouterr().out.splitlines()
     assert "ghost.sprite.toml" in warning
     assert adopted == f"adopted {out / 'goblin.png'}"
-    assert summary == "built: 4 sprites, 6 frames, 1 target"
+    assert summary == "built: 5 sprites, 7 frames, 1 target"
 
 
 def test_a_sprite_that_is_not_exported_is_an_unknown_adopt_id(demo, capsys):
@@ -445,7 +450,7 @@ def test_a_sprite_that_is_not_exported_is_an_unknown_adopt_id(demo, capsys):
         captured = capsys.readouterr()
         assert captured.out == ""
         assert captured.err == (
-            f"error: unknown sprite id {sprite_id!r} (sprites: goblin, ground_light, warrior, warrior_red)\n"
+            f"error: unknown sprite id {sprite_id!r} (sprites: goblin, ground_light, slime, warrior, warrior_red)\n"
         )
     assert not (demo / "out").exists()
 
@@ -474,7 +479,7 @@ def test_check_ignores_adopt_and_its_ids(demo, capsys):
     run(demo, "--adopt")
     capsys.readouterr()
     assert run(demo, "--check", "--adopt", "nosuch") == 0
-    assert capsys.readouterr().out == "up to date: 4 sprites, 6 frames, 1 target\n"
+    assert capsys.readouterr().out == "up to date: 5 sprites, 7 frames, 1 target\n"
 
 
 def test_build_help_describes_adopt(capsys):
@@ -519,11 +524,11 @@ def test_two_targets_with_disjoint_files_share_a_directory(demo, capsys, monkeyp
 
     assert run(demo) == 0
 
-    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 2 targets\n"
+    assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 2 targets\n"
     out = demo / "out" / "frames"
     assert sorted(tree(out)) == sorted([*DEMO_FILES, "atlas.json"])
     manifest = json.loads((out / MANIFEST_NAME).read_text(encoding="utf-8"))
-    assert manifest["targets"] == {"frames": sorted(DEMO_FILES[1:]), "phaser:atlas": ["atlas.json"]}
+    assert manifest["targets"] == {"frames:sprites": sorted(DEMO_FILES[1:]), "phaser:atlas": ["atlas.json"]}
 
 
 def test_a_target_type_with_no_exporter_is_a_config_error(demo, capsys, monkeypatch):
@@ -550,7 +555,7 @@ def test_check_is_clean_after_a_build(demo, capsys):
     assert run(demo, "--check") == 0
 
     captured = capsys.readouterr()
-    assert captured.out == "up to date: 4 sprites, 6 frames, 1 target\n"
+    assert captured.out == "up to date: 5 sprites, 7 frames, 1 target\n"
     assert captured.err == ""
     assert tree(demo) == before
 
@@ -559,7 +564,7 @@ def test_check_before_the_first_build_reports_every_file_missing(demo, capsys):
     assert run(demo, "--check") == 1
     lines = capsys.readouterr().out.splitlines()
     assert lines[:-1] == [f"out/frames/{name}: E401 missing" for name in sorted(DEMO_FILES)]
-    assert lines[-1] == "9 errors, 0 warnings in 9 files"
+    assert lines[-1] == "11 errors, 0 warnings in 11 files"
     assert not (demo / "out").exists()
 
 
@@ -605,7 +610,8 @@ def test_check_reports_the_files_of_a_deleted_sprite(demo, capsys):
     assert capsys.readouterr().out.splitlines() == [
         f"out/frames/{MANIFEST_NAME}: E401 stale",
         "out/frames/goblin.png: E401 no longer generated",
-        "2 errors, 0 warnings in 2 files",
+        "out/frames/sprites.json: E401 stale",
+        "3 errors, 0 warnings in 3 files",
     ]
     assert tree(demo) == before
 
@@ -632,7 +638,7 @@ def test_check_with_failing_sprites_reports_only_those(demo, capsys):
 def test_check_counts_warnings_in_the_summary(demo, capsys):
     edit(demo / "palette.toml", "[colors]", '[colors]\nz = "#f4f4f4"')
     assert run(demo, "--check") == 1
-    assert capsys.readouterr().out.splitlines()[-1] == "9 errors, 1 warning in 10 files"
+    assert capsys.readouterr().out.splitlines()[-1] == "11 errors, 1 warning in 12 files"
 
 
 def test_a_sprite_named_like_another_sprites_frame_file_stops_the_build(demo, capsys):
@@ -643,6 +649,140 @@ def test_a_sprite_named_like_another_sprites_frame_file_stops_the_build(demo, ca
     out = capsys.readouterr().out
     assert "E003 sprite id 'warrior__idle_0' clashes with frame 'idle_0' of sprite 'warrior'" in out
     assert not (demo / "out").exists()
+
+
+# --- the index --------------------------------------------------------------
+
+
+def frames_index(root: Path, name: str = "sprites") -> dict:
+    return json.loads((root / "out" / "frames" / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def test_a21_the_frames_target_writes_an_index_of_sprite_data(demo):
+    assert run(demo) == 0
+
+    index = frames_index(demo)
+    assert sorted(index) == ["goblin", "ground_light", "slime", "warrior", "warrior_red"]
+    assert index["goblin"] == {
+        "anchor": [16, 32],
+        "bounds": [4, 3, 26, 29],
+        "canvas": "unit",
+        "display_scale": 2,
+        "file": "goblin.png",
+        "frames": {"main": {"bounds": [4, 3, 26, 29], "file": "goblin.png"}},
+        "size": [32, 32],
+    }
+    assert index["ground_light"]["canvas"] == "tile"
+    assert index["ground_light"]["display_scale"] == 4
+
+
+def test_a21_bounds_is_the_box_of_the_pixels_in_the_exported_image(demo):
+    run(demo)
+    out = demo / "out" / "frames"
+    for sprite_id, entry in frames_index(demo).items():
+        for frame in entry["frames"].values():
+            left, top, right, bottom = image(out / frame["file"]).getbbox()
+            assert frame["bounds"] == [left, top, right - left, bottom - top], sprite_id
+
+
+def test_index_frames_of_a_sprite_with_several_frames_name_their_own_files(demo):
+    run(demo)
+    index = frames_index(demo)
+    for sprite_id in ("warrior", "warrior_red"):
+        entry = index[sprite_id]
+        assert entry["file"] == f"{sprite_id}.png"
+        assert {name: frame["file"] for name, frame in entry["frames"].items()} == {
+            "idle_0": f"{sprite_id}__idle_0.png",
+            "idle_1": f"{sprite_id}__idle_1.png",
+        }
+
+
+def test_index_bounds_of_a_sprite_covers_all_its_frames(demo):
+    edit(
+        demo / "units" / "warrior.sprite.toml",
+        "[anim.idle]",
+        '[frames.reach]\nfrom = "idle_0"\nruns = { 9 = [[1, "kkkkkk"]] }\n\n[anim.idle]',
+    )
+    assert run(demo) == 0
+
+    entry = frames_index(demo)["warrior"]
+    assert entry["frames"]["idle_0"]["bounds"] == [7, 1, 22, 31]
+    assert entry["frames"]["reach"]["bounds"] == [1, 1, 28, 31]
+    assert entry["bounds"] == [1, 1, 28, 31]
+
+
+def test_a22_build_check_flags_the_index_after_a_display_scale_edit(demo, capsys):
+    run(demo)
+    edit(demo / "sprite-tool.toml", "display_scale = 2", "display_scale = 3")
+    capsys.readouterr()
+
+    assert run(demo, "--check") == 1
+
+    assert capsys.readouterr().out.splitlines() == [
+        "out/frames/sprites.json: E401 stale",
+        "1 error, 0 warnings in 1 file",
+    ]
+
+
+def test_a_frames_target_names_its_index(demo):
+    set_exports(demo, FRAMES + 'name = "units"\n')
+    assert run(demo) == 0
+
+    out = demo / "out" / "frames"
+    assert sorted(frames_index(demo, "units")) == ["goblin", "ground_light", "slime", "warrior", "warrior_red"]
+    assert not (out / "sprites.json").exists()
+    manifest = json.loads((out / MANIFEST_NAME).read_text(encoding="utf-8"))
+    assert list(manifest["targets"]) == ["frames:units"]
+
+
+def test_a_frames_and_a_godot_target_with_one_name_in_one_directory_is_a_config_error(demo, capsys):
+    godot = '\n[[export]]\ntype = "godot"\nout = "out/frames"\nname = "sprites"\nres_path = "res://sprites"\n'
+    set_exports(demo, FRAMES + godot)
+
+    assert run(demo) == 2
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("error: export targets 'frames:sprites' and 'godot:sprites' both write sprites.json")
+    assert not (demo / "out").exists()
+
+
+def as_built_by_0_2_0(root: Path) -> Path:
+    """Build, then put `out/frames` back to what 0.2.0 left: no index, and the manifest key `frames`."""
+    assert run(root) == 0
+    out = root / "out" / "frames"
+    (out / "sprites.json").unlink()
+    files = sorted(name for name in DEMO_FILES[1:] if name != "sprites.json")
+    (out / MANIFEST_NAME).write_text(json.dumps({"targets": {"frames": files}, "version": 1}), encoding="utf-8")
+    return out
+
+
+def test_a_directory_built_by_0_2_0_builds_without_adopt_and_gets_the_new_manifest_key(demo, capsys):
+    out = as_built_by_0_2_0(demo)
+    capsys.readouterr()
+
+    assert run(demo) == 0
+
+    assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 1 target\n"
+    assert sorted(tree(out)) == sorted(DEMO_FILES)
+    manifest = json.loads((out / MANIFEST_NAME).read_text(encoding="utf-8"))
+    assert manifest == {"targets": {"frames:sprites": sorted(DEMO_FILES[1:])}, "version": 1}
+
+
+def test_a_hand_made_index_in_a_directory_built_by_0_2_0_blocks_the_build(demo, capsys):
+    out = as_built_by_0_2_0(demo)
+    (out / "sprites.json").write_text("mine", encoding="utf-8")
+    capsys.readouterr()
+
+    assert run(demo) == 2
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"error: {out / 'sprites.json'} already exists and was not written by sprite-tool"
+        " (use --adopt <id>... for those sprites, or --adopt for all)\n"
+    )
+    assert (out / "sprites.json").read_text(encoding="utf-8") == "mine"
 
 
 # --- build = false ----------------------------------------------------------
@@ -666,7 +806,7 @@ def test_a25_a_sprite_with_build_false_is_counted_by_check(demo, capsys):
     add_scout(demo)
 
     assert main(["check", "--project", str(demo)]) == 0
-    assert capsys.readouterr().out == "ok: 6 sprites, 8 frames\n"
+    assert capsys.readouterr().out == "ok: 8 sprites, 10 frames\n"
 
 
 def test_a25_a_sprite_with_build_false_is_previewed(demo, capsys):
@@ -684,12 +824,12 @@ def test_a25_a_sprite_with_build_false_and_its_variant_are_in_no_target_and_no_i
 
     assert run(demo) == 0
 
-    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 3 targets\n"
+    assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 3 targets\n"
     out = demo / "out"
     assert [name for name in tree(out) if Path(name).name.startswith("scout")] == []
     assert sorted(tree(out / "frames")) == sorted(DEMO_FILES)
     index = json.loads((out / "godot" / "atlas.json").read_text(encoding="utf-8"))
-    assert sorted(index) == ["goblin", "ground_light", "warrior", "warrior_red"]
+    assert sorted(index) == ["goblin", "ground_light", "slime", "warrior", "warrior_red"]
     atlas = json.loads((out / "phaser" / "atlas.json").read_text(encoding="utf-8"))
     assert [name for name in atlas["frames"] if name.startswith("scout")] == []
     anims = (out / "phaser" / "atlas.anims.json").read_text(encoding="utf-8")
@@ -702,7 +842,7 @@ def test_a25_build_check_does_not_count_a_sprite_with_build_false(demo, capsys):
     capsys.readouterr()
 
     assert run(demo, "--check") == 0
-    assert capsys.readouterr().out == "up to date: 4 sprites, 6 frames, 1 target\n"
+    assert capsys.readouterr().out == "up to date: 5 sprites, 7 frames, 1 target\n"
 
 
 def test_a25_adding_build_false_removes_the_sprites_files_and_leaves_the_others(demo, capsys):
@@ -710,17 +850,18 @@ def test_a25_adding_build_false_removes_the_sprites_files_and_leaves_the_others(
     run(demo)
     out = demo / "out" / "frames"
     assert {"scout.png", "scout_pale.png"} <= set(tree(out))
-    before = {name: (out / name).stat().st_mtime_ns for name in DEMO_FILES if name != MANIFEST_NAME}
+    # The index listed the scout, so it is rewritten; the images are not.
+    before = {name: (out / name).stat().st_mtime_ns for name in DEMO_PNGS}
 
     scout.write_text("build = false\n" + scout.read_text(encoding="utf-8"), encoding="utf-8")
     capsys.readouterr()
     assert run(demo) == 0
 
-    assert capsys.readouterr().out == "built: 4 sprites, 6 frames, 1 target\n"
+    assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 1 target\n"
     assert sorted(tree(out)) == sorted(DEMO_FILES)
     assert {name: (out / name).stat().st_mtime_ns for name in before} == before
     assert run(demo, "--check") == 0
-    assert capsys.readouterr().out == "up to date: 4 sprites, 6 frames, 1 target\n"
+    assert capsys.readouterr().out == "up to date: 5 sprites, 7 frames, 1 target\n"
 
 
 def test_a25_build_check_reports_the_exported_files_of_a_sprite_that_now_says_build_false(demo, capsys):
@@ -761,3 +902,26 @@ def test_a25_build_of_the_wrong_type_is_e001_at_the_build_line(demo, capsys):
 
     assert run(demo) == 1
     assert "units/scout.sprite.toml:2:1: E001 build must be true or false" in capsys.readouterr().out
+
+
+# --- the demo's own sprites -------------------------------------------------
+
+
+def test_the_demos_auto_outlined_sprite_is_in_every_target_and_its_reference_copy_in_none(demo, capsys):
+    set_exports(demo, ALL_TARGETS)
+
+    assert run(demo) == 0
+
+    assert capsys.readouterr().out == "built: 5 sprites, 7 frames, 3 targets\n"
+    out = demo / "out"
+    assert (out / "frames" / "slime.png").exists()
+    assert (out / "godot" / "slime.tres").exists()
+    atlas = json.loads((out / "phaser" / "atlas.json").read_text(encoding="utf-8"))
+    assert "slime/main" in atlas["frames"]
+    assert "slime" in frames_index(demo)
+    godot = json.loads((out / "godot" / "atlas.json").read_text(encoding="utf-8"))
+    assert "slime" in godot
+
+    assert [name for name in tree(out) if "sample_slime" in name] == []
+    assert "sample_slime" not in frames_index(demo) and "sample_slime" not in godot
+    assert [name for name in atlas["frames"] if name.startswith("sample_slime")] == []

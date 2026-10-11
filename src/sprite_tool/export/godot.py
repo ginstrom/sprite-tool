@@ -10,6 +10,7 @@ from sprite_tool.manifest import json_bytes
 from sprite_tool.model import Anim, ExportTarget, Placement, Sprite
 
 from .atlas import compose_sheet
+from .index import sprite_entry
 
 # The animation a sprite gets when it declares none: every frame, once a second.
 DEFAULT_ANIM = "default"
@@ -20,7 +21,7 @@ def export(
     sprites: Sequence[Sprite], images: Mapping[tuple[str, str], Image.Image], target: ExportTarget
 ) -> dict[str, bytes]:
     """`<name>.png`, `<name>.json` and one `<id>.tres` per sprite. The index
-    carries what a `SpriteFrames` cannot: anchor, canvas size and display scale."""
+    carries what a `SpriteFrames` cannot: anchor, canvas, display scale and bounds."""
     sprites = sorted(sprites, key=lambda sprite: sprite.id)
     sheet, _, placements = compose_sheet(sprites, images, target.padding)
     regions = {(placement.sprite_id, placement.frame): placement for placement in placements}
@@ -36,12 +37,9 @@ def export(
 
 
 def _index_entry(sprite: Sprite, regions: Mapping[tuple[str, str], Placement]) -> dict[str, object]:
-    canvas = sprite.canvas
     return {
-        "anchor": list(canvas.anchor),
-        "display_scale": canvas.display_scale,
+        **sprite_entry(sprite),
         "frames": {frame.name: _rect(regions[sprite.id, frame.name]) for frame in sprite.frames},
-        "size": [canvas.width, canvas.height],
     }
 
 

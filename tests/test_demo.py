@@ -10,7 +10,7 @@ DEMO = Path(__file__).parent.parent / "examples" / "demo"
 def test_demo_project_checks_clean(capsys):
     assert main(["check", "--project", str(DEMO)]) == 0
     captured = capsys.readouterr()
-    assert captured.out == "ok: 4 sprites, 6 frames\n"
+    assert captured.out == "ok: 6 sprites, 8 frames\n"
     assert captured.err == ""
 
 
@@ -18,7 +18,7 @@ def test_demo_project_has_the_sprites_later_steps_rely_on():
     project, problems = load(DEMO)
     assert problems == []
     assert [(target.type, target.out, target.name, target.res_path) for target in project.exports] == [
-        ("frames", DEMO / "out" / "frames", None, None),
+        ("frames", DEMO / "out" / "frames", "sprites", None),
         ("phaser", DEMO / "out" / "phaser", "atlas", None),
         ("godot", DEMO / "out" / "godot", "atlas", "res://sprites"),
     ]
@@ -26,7 +26,7 @@ def test_demo_project_has_the_sprites_later_steps_rely_on():
     sprites, problems = spritefile.load_all(project)
     assert problems == []
     by_id = {sprite.id: sprite for sprite in sprites}
-    assert sorted(by_id) == ["goblin", "ground_light", "warrior", "warrior_red"]
+    assert sorted(by_id) == ["goblin", "ground_light", "sample_slime", "slime", "warrior", "warrior_red"]
 
     warrior = by_id["warrior"]
     assert (warrior.canvas.name, warrior.canvas.width, warrior.canvas.height) == ("unit", 32, 32)
@@ -37,6 +37,11 @@ def test_demo_project_has_the_sprites_later_steps_rely_on():
     red = by_id["warrior_red"]
     assert red.variant_of == "warrior"
     assert red.frames[0].rows != warrior.frames[0].rows
+
+    slime, sample = by_id["slime"], by_id["sample_slime"]
+    assert (slime.auto_outline, slime.build, slime.frames[0].literal) == (True, True, False)
+    assert (sample.auto_outline, sample.build, sample.frames[0].literal) == (False, False, True)
+    assert sample.frames[0].rows == slime.frames[0].rows
 
     assert (by_id["goblin"].canvas.name, len(by_id["goblin"].frames), by_id["goblin"].anims) == ("unit", 1, ())
     assert (by_id["ground_light"].canvas.name, by_id["ground_light"].canvas.width) == ("tile", 16)

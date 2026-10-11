@@ -249,6 +249,8 @@ def test_on_tile_uses_the_default_frame(loaded):
 # Contact sheet
 
 CELL_H = 64 + LABEL_GAP + LINE_HEIGHT
+# The demo's sprites on the `unit` canvas; a sprite with `build = false` is on the sheet too.
+UNIT_IDS = ["goblin", "sample_slime", "slime", "warrior", "warrior_red"]
 
 
 def art_at(project, sprite, factor: int, image: Image.Image, at: tuple[int, int]) -> bool:
@@ -261,10 +263,10 @@ def art_at(project, sprite, factor: int, image: Image.Image, at: tuple[int, int]
 def test_sheet_groups_by_canvas_class_and_sorts_by_id(loaded):
     project, sprites = loaded
     image = preview.contact_sheet(project, list(sprites.values())[::-1])
-    # Units: three cells as wide as the label `warrior_red`. Tile: one as wide as `ground_light`.
-    unit_w, tile_w = 11 * CHAR_WIDTH, 12 * CHAR_WIDTH
-    assert image.size == (2 * MARGIN + 3 * unit_w + 2 * GAP, 2 * MARGIN + 2 * CELL_H + GAP)
-    for column, sprite_id in enumerate(["goblin", "warrior", "warrior_red"]):
+    # Units: five cells as wide as the label `sample_slime`. Tile: one as wide as `ground_light`.
+    unit_w, tile_w = 12 * CHAR_WIDTH, 12 * CHAR_WIDTH
+    assert image.size == (2 * MARGIN + 5 * unit_w + 4 * GAP, 2 * MARGIN + 2 * CELL_H + GAP)
+    for column, sprite_id in enumerate(UNIT_IDS):
         at = (MARGIN + column * (unit_w + GAP) + (unit_w - 64) // 2, MARGIN)
         assert art_at(project, sprites[sprite_id], 2, image, at), sprite_id
     at = (MARGIN + (tile_w - 64) // 2, MARGIN + CELL_H + GAP)
@@ -276,8 +278,8 @@ def test_sheet_draws_each_id_under_its_sprite(loaded):
 
     project, sprites = loaded
     image = preview.contact_sheet(project, sprites.values())
-    unit_w = 11 * CHAR_WIDTH
-    for column, sprite_id in enumerate(["goblin", "warrior", "warrior_red"]):
+    unit_w = 12 * CHAR_WIDTH
+    for column, sprite_id in enumerate(UNIT_IDS):
         width = len(sprite_id) * CHAR_WIDTH
         expected = Image.new("RGBA", (width, LINE_HEIGHT), BACKGROUND)
         ImageDraw.Draw(expected).text((0, 0), sprite_id, font=ImageFont.load_default_imagefont(), fill=(255, 255, 255, 255))
@@ -538,7 +540,7 @@ def test_a_bad_palette_prints_its_problems_and_writes_nothing(demo, capsys):
 def test_unknown_id_is_a_usage_error(demo, capsys, argv, name):
     assert run(*argv) == 2
     captured = capsys.readouterr()
-    known = "(sprites: goblin, ground_light, warrior, warrior_red)"
+    known = "(sprites: goblin, ground_light, sample_slime, slime, warrior, warrior_red)"
     assert (captured.out, captured.err) == ("", f"error: unknown sprite id '{name}' {known}\n")
     assert previews(demo) == []
 

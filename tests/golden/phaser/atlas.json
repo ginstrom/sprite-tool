@@ -28,7 +28,7 @@
       "frame": {
         "h": 16,
         "w": 16,
-        "x": 67,
+        "x": 100,
         "y": 34
       },
       "pivot": {
@@ -48,11 +48,35 @@
       },
       "trimmed": false
     },
-    "warrior/idle_0": {
+    "slime/main": {
       "frame": {
         "h": 32,
         "w": 32,
         "x": 34,
+        "y": 1
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 1.0
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 32,
+        "w": 32
+      },
+      "spriteSourceSize": {
+        "h": 32,
+        "w": 32,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
+    "warrior/idle_0": {
+      "frame": {
+        "h": 32,
+        "w": 32,
+        "x": 67,
         "y": 1
       },
       "pivot": {
@@ -76,8 +100,8 @@
       "frame": {
         "h": 32,
         "w": 32,
-        "x": 67,
-        "y": 1
+        "x": 1,
+        "y": 34
       },
       "pivot": {
         "x": 0.5,
@@ -100,7 +124,7 @@
       "frame": {
         "h": 32,
         "w": 32,
-        "x": 1,
+        "x": 34,
         "y": 34
       },
       "pivot": {
@@ -124,7 +148,7 @@
       "frame": {
         "h": 32,
         "w": 32,
-        "x": 34,
+        "x": 67,
         "y": 34
       },
       "pivot": {
