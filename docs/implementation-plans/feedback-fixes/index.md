@@ -43,7 +43,7 @@ Every task file repeats these.
 | 04 | [Adopt by id](04-adopt-by-id.md) | `build --adopt [id ...]`, `adopted` lines, new stop message | 03 | done |
 | 05 | [Export index, demo sprites and golden files](05-export-index-demo-golden.md) | `sprites.json` in `frames`, `canvas` and `bounds` in the `godot` index, two new demo sprites, regenerated golden files | 01, 02, 03 | done |
 | 06 | [Preview at game size](06-preview-game-size.md) | Game-size frames beside the enlarged ones; `--scale display` | none | done |
-| 07 | [Guide and template](07-guide-template.md) | Guide states key rules, exports, removed keys, runs, auto outline, `build = false` | 01, 02, 03, 04, 05 | pending |
+| 07 | [Guide and template](07-guide-template.md) | Guide states key rules, exports, removed keys, runs, auto outline, `build = false` | 01, 02, 03, 04, 05 | done |
 | 08 | [Documentation, version 0.3.0 and acceptance](08-docs-release-acceptance.md) | Base design, README and AGENTS.md brought in line; version set; manual acceptance run | 01 to 07 | pending |
 
 ## Execution order
@@ -225,4 +225,22 @@ record it there.
   - `cli.DISPLAY_SCALE` is the word `display`. `sprite import --scale display` is still an argparse error.
   - `sprite preview --scale display` with no ids writes the contact sheet as before.
   - Step 07: the guide does not mention `--scale` at all. Step 08: the README's command table still reads `[--scale N]` and its preview section does not say the plain preview carries game-size frames.
+- **No other deviation** from the task file.
+
+### Step 07: Guide and template (2026-10-11, commit `d3e6ff1`)
+
+- **Evidence.** `uv run pytest tests/test_init_new_guide.py`: 87 passed (66 before the step). `make check`: 1101 passed (1080 before the step), then `ok: 6 sprites, 8 frames`. `git status` shows no change under `examples/demo/` or `tests/golden/`. `uv run sprite guide --project examples/demo` prints **76 lines** (58 before), none longer than 100 columns; read through once as its reader would.
+- **Criteria.** A26 is `test_a26_demo_guide_states_key_rules_exports_and_removed_keys_in_under_80_lines` in `tests/test_init_new_guide.py`. Each fact under the task's **Changes** is a phrase in `test_guide_covers_runs_auto_outline_build_false_and_the_new_command_forms`; the Exports section has four tests (no targets, one, three, a long directory); the example's `runs` line is shown to change row 2 of its frame and nothing else; the template comment has its own test.
+- **Existing tests changed.** Only the limit in `test_a13_demo_guide_is_short_and_lists_the_palette_and_canvas_classes`, 60 to 80, as the task file says.
+- **Wording that differs from the design's text.**
+  - The palette sentence is the design's, but at 101 characters it does not fit one line, so it wraps after `up to 90`. Tests that look for a phrase join the guide's lines first (`flat`).
+  - The comment on `from` reads `optional: the frame to start from; without it, a blank canvas`.
+  - The auto-outline rule ends `the tool draws the outline with the first key listed for the class`.
+- **Choices later steps may meet.**
+  - The class line now lists the outline keys with `Canvas.outline_key` first and the rest sorted (`outline w g k` for `outline = ["w", "k", "g"]`), so that "the first key listed" is true. It was plain sorted order before. No existing test saw the difference.
+  - An export directory that makes the line's prefix longer than 50 characters is printed on its own line, with the files on the lines below it indented by two spaces. A directory longer than about 90 characters still makes a line over 100 columns.
+  - The file lists in `guide._files` are written out, not taken from the exporters. A change to an exporter's file names needs the same change there.
+  - The `4th` in the `--grid` line is literal text; the test builds the phrase from `preview.GRID_LABEL_EVERY`, so changing the constant fails the test.
+  - `--adopt` is its own line under `sprite build`: `also take over files already in an export directory: those of the given sprites, or all`.
+  - Step 08: the guide still says nothing of `--scale` or of the game-size frames in a plain preview. Neither is in R18 or this task file. If the manual acceptance run shows an agent needs them, they cost one line; there are three lines to spare under the limit of 80.
 - **No other deviation** from the task file.
