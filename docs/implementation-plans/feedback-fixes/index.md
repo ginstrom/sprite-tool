@@ -42,7 +42,7 @@ Every task file repeats these.
 | 03 | [`build = false`](03-build-false.md) | A sprite that is checked and previewed and never exported | none | done |
 | 04 | [Adopt by id](04-adopt-by-id.md) | `build --adopt [id ...]`, `adopted` lines, new stop message | 03 | done |
 | 05 | [Export index, demo sprites and golden files](05-export-index-demo-golden.md) | `sprites.json` in `frames`, `canvas` and `bounds` in the `godot` index, two new demo sprites, regenerated golden files | 01, 02, 03 | done |
-| 06 | [Preview at game size](06-preview-game-size.md) | Game-size frames beside the enlarged ones; `--scale display` | none | pending |
+| 06 | [Preview at game size](06-preview-game-size.md) | Game-size frames beside the enlarged ones; `--scale display` | none | done |
 | 07 | [Guide and template](07-guide-template.md) | Guide states key rules, exports, removed keys, runs, auto outline, `build = false` | 01, 02, 03, 04, 05 | pending |
 | 08 | [Documentation, version 0.3.0 and acceptance](08-docs-release-acceptance.md) | Base design, README and AGENTS.md brought in line; version set; manual acceptance run | 01 to 07 | pending |
 
@@ -211,3 +211,18 @@ record it there.
   - Step 07: the demo's lines are `ok: 6 sprites, 8 frames` and `built: 5 sprites, 7 frames, 3 targets`. The docstring of `manifest.target_key` already says `frames:sprites`.
   - Step 08: `export/index.py` (`bounds`, `union`, `sprite_entry`) is not yet in the layout in `AGENTS.md`.
 - **No deviation** from the task file.
+
+### Step 06: Preview at game size (2026-10-11, commits `904787d`, `35da030`)
+
+- **Evidence.** `uv run pytest tests/test_preview.py tests/test_cli.py`: 92 passed (75 before the step). `make check`: 1080 passed (1063 before the step), then `ok: 6 sprites, 8 frames`. `git status` shows no change under `examples/demo/` or `tests/golden/`. `uv run sprite preview warrior --project examples/demo` writes a 552 by 408 image, looked at: two rows (warrior, `warrior_red`) of two frames at 6x, then the same four at 2x, top-aligned.
+- **Criteria.** A27 is `test_a27_preview_is_the_enlarged_frames_then_the_same_frames_at_game_size` and `test_a27_scale_display_draws_only_the_game_size_frames`, in `tests/test_preview.py`. The layout is tested on `sprite_preview` directly under "Game size" in the same file; each other clause of the task's verification list has a test under "The command".
+- **Existing tests changed**, all for the wider default image: `test_a9_preview_writes_one_png_and_prints_only_its_path`, `test_preview_of_a_sprite_shows_its_frames_and_variants`, `test_preview_of_a_variant_shows_only_the_variant`, `test_scale_flag_overrides_the_configured_scale` and `test_several_ids_are_one_image_in_the_order_given`. The third was not in the task file's list; a variant previewed directly gets game-size frames like any other row. `test_parsed_arguments` in `tests/test_cli.py` gained two lines.
+- **Wording chosen where the task file gave none.** The conflict is `error: --scale display cannot be used with --grid`. The option reads `--scale N|display` in the usage line.
+- **Choices later steps may meet.**
+  - The conflict is checked before the project is loaded, so it is reported with no ids, with an unknown id, and outside a project.
+  - When the preview scale is smaller than `display_scale` (`--scale 1` on a unit), the game-size frames are still drawn and are the taller group; the row height is the taller of the two.
+  - The game-size frames never carry the grid. `cli._preview` passes `display=not args.grid`, so `sprite_preview(grid=True, display=True)` is not reachable from the command.
+  - `cli.DISPLAY_SCALE` is the word `display`. `sprite import --scale display` is still an argparse error.
+  - `sprite preview --scale display` with no ids writes the contact sheet as before.
+  - Step 07: the guide does not mention `--scale` at all. Step 08: the README's command table still reads `[--scale N]` and its preview section does not say the plain preview carries game-size frames.
+- **No other deviation** from the task file.
