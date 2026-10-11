@@ -293,9 +293,14 @@ PREVIEW_DIR = ".preview"
 # because seeing the sprite is how they get fixed.
 _STYLE_CODES = frozenset({"E106", "E201", "E202"})
 _MAX_PREVIEW_STEM = 100
+# `--scale display`: each sprite at its class's `display_scale`, the size the game draws it.
+DISPLAY_SCALE = "display"
 
 
 def _preview(args: argparse.Namespace) -> int:
+    if args.scale == DISPLAY_SCALE and args.grid:
+        # A grid at 2x or 3x cannot be read.
+        return _usage_error(f"--scale {DISPLAY_SCALE} cannot be used with --grid")
     project, sprites, problems = load_checked(args)
     if any(problem.path == project.palette_path and _is_error(problem) for problem in problems):
         report(problems, project.root)
@@ -328,14 +333,19 @@ def _preview(args: argparse.Namespace) -> int:
     if ids:
         if args.on:
             kind = f"on-{args.on}"
-            scale = args.scale or preview_module.ON_TILE_SCALE
+            # The game draws the pair with no common factor.
+            scale = 1 if args.scale == DISPLAY_SCALE else args.scale or preview_module.ON_TILE_SCALE
             parts = [preview_module.on_tile(project, by_id[name], by_id[args.on], scale) for name in ids]
         else:
             kind = "grid" if args.grid else "plain"
-            scale = args.scale or project.preview.scale
             parts = [
                 preview_module.sprite_preview(
-                    project, by_id[name], [other for other in sprites if other.variant_of == name], scale, args.grid
+                    project,
+                    by_id[name],
+                    [other for other in sprites if other.variant_of == name],
+                    by_id[name].canvas.display_scale if args.scale == DISPLAY_SCALE else args.scale or project.preview.scale,
+                    args.grid,
+                    display=not args.grid,
                 )
                 for name in ids
             ]
@@ -413,6 +423,10 @@ def _positive_int(text: str) -> int:
     return value
 
 
+def _preview_scale(text: str) -> int | str:
+    return DISPLAY_SCALE if text == DISPLAY_SCALE else _positive_int(text)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sprite",
@@ -449,7 +463,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="id",
         help="sprite ids to draw, one under another in a single image (default: the contact sheet)",
     )
-    preview.add_argument("--scale", type=_positive_int, metavar="N", help="upscale factor")
+    preview.add_argument(
+        "--scale",
+        type=_preview_scale,
+        metavar=f"N|{DISPLAY_SCALE}",
+        help=f"upscale factor (default: [preview] scale), or `{DISPLAY_SCALE}` for game size only: "
+        "each sprite at its class's display_scale",
+    )
     preview.add_argument("--grid", action="store_true", help="draw a pixel grid; writes <ids>.grid.png, not <ids>.plain.png")
     preview.add_argument("--on", metavar="<tile-id>", help="draw each sprite standing on this tile; writes <ids>.on-<tile-id>.png")
     preview.add_argument("--sheet", action="store_true", help="also write the contact sheet, sheet.png")

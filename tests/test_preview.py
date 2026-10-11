@@ -397,26 +397,57 @@ def test_a9_preview_writes_one_png_and_prints_only_its_path(demo, capsys):
     assert (captured.out, captured.err) == (".preview/goblin.plain.png\n", "")
     assert previews(demo) == ["goblin.plain.png"]
     with Image.open(demo / ".preview" / "goblin.plain.png") as image:
-        # The demo's configured scale is 6.
-        assert image.size == (32 * 6 + 2 * MARGIN, 32 * 6 + 2 * MARGIN)
+        # The demo's configured scale is 6, and the frame follows at game size.
+        assert image.size == (2 * MARGIN + ENLARGED + GAP + GAME, 2 * MARGIN + ENLARGED)
 
 
 def test_preview_of_a_sprite_shows_its_frames_and_variants(demo, loaded):
     assert run("warrior") == 0
     with Image.open(demo / ".preview" / "warrior.plain.png") as image:
-        assert image.convert("RGBA").tobytes() == sprite_image(loaded, "warrior", scale=6).tobytes()
+        assert image.convert("RGBA").tobytes() == sprite_image(loaded, "warrior", scale=6, display=True).tobytes()
+
+
+def test_a27_preview_is_the_enlarged_frames_then_the_same_frames_at_game_size(demo):
+    assert run("warrior") == 0
+    with Image.open(demo / ".preview" / "warrior.plain.png") as image:
+        enlarged, game = 2 * ENLARGED + GAP, 2 * GAME + GAP
+        assert image.width == 2 * MARGIN + enlarged + GAP + game
+
+
+def test_a27_scale_display_draws_only_the_game_size_frames(demo, loaded, capsys):
+    assert run("warrior", "--scale", "display") == 0
+    assert capsys.readouterr().out == ".preview/warrior.plain.png\n"
+    with Image.open(demo / ".preview" / "warrior.plain.png") as image:
+        assert image.width == 2 * MARGIN + 2 * GAME + GAP
+        assert image.convert("RGBA").tobytes() == sprite_image(loaded, "warrior", scale=2).tobytes()
+
+
+def test_scale_display_draws_each_sprite_at_its_own_class_scale(demo, loaded):
+    """The unit class is drawn at 2 and the tile class at 4."""
+    assert run("warrior", "ground_light", "--scale", "display") == 0
+    project, _ = loaded
+    parts = [sprite_image(loaded, "warrior", scale=2), sprite_image(loaded, "ground_light", scale=4)]
+    assert parts[1].size == (16 * 4 + 2 * MARGIN, 16 * 4 + 2 * MARGIN)
+    with Image.open(demo / ".preview" / "warrior+ground_light.plain.png") as image:
+        assert image.convert("RGBA").tobytes() == preview.stack(project, parts).tobytes()
 
 
 def test_preview_of_a_variant_shows_only_the_variant(demo, loaded):
     assert run("warrior_red") == 0
     with Image.open(demo / ".preview" / "warrior_red.plain.png") as image:
-        assert image.size == (2 * 32 * 6 + GAP + 2 * MARGIN, 32 * 6 + 2 * MARGIN)
+        assert image.size == (2 * MARGIN + 2 * ENLARGED + GAP + GAP + 2 * GAME + GAP, ENLARGED + 2 * MARGIN)
 
 
 def test_scale_flag_overrides_the_configured_scale(demo):
     assert run("goblin", "--scale", "3") == 0
     with Image.open(demo / ".preview" / "goblin.plain.png") as image:
-        assert image.size == (32 * 3 + 2 * MARGIN, 32 * 3 + 2 * MARGIN)
+        assert image.size == (2 * MARGIN + 32 * 3 + GAP + GAME, 32 * 3 + 2 * MARGIN)
+
+
+def test_scale_equal_to_the_display_scale_draws_the_frames_once(demo):
+    assert run("goblin", "--scale", "2") == 0
+    with Image.open(demo / ".preview" / "goblin.plain.png") as image:
+        assert image.size == (GAME + 2 * MARGIN, GAME + 2 * MARGIN)
 
 
 def test_grid_flag_draws_the_grid(demo, loaded, capsys):
@@ -424,6 +455,20 @@ def test_grid_flag_draws_the_grid(demo, loaded, capsys):
     assert capsys.readouterr().out == ".preview/goblin.grid.png\n"
     with Image.open(demo / ".preview" / "goblin.grid.png") as image:
         assert image.convert("RGBA").tobytes() == sprite_image(loaded, "goblin", scale=6, grid=True).tobytes()
+
+
+def test_grid_with_a_scale_has_no_game_size_frames(demo, loaded):
+    assert run("goblin", "--grid", "--scale", "3") == 0
+    with Image.open(demo / ".preview" / "goblin.grid.png") as image:
+        assert image.convert("RGBA").tobytes() == sprite_image(loaded, "goblin", scale=3, grid=True).tobytes()
+
+
+@pytest.mark.parametrize("more", [[], ["--on", "ground_light"]], ids=["alone", "with --on"])
+def test_scale_display_with_grid_is_a_usage_error(demo, capsys, more):
+    assert run("goblin", "--scale", "display", "--grid", *more) == 2
+    captured = capsys.readouterr()
+    assert (captured.out, captured.err) == ("", "error: --scale display cannot be used with --grid\n")
+    assert previews(demo) == []
 
 
 def test_each_kind_of_preview_has_its_own_file(demo):
@@ -437,8 +482,8 @@ def test_several_ids_are_one_image_in_the_order_given(demo, capsys, loaded):
     assert run("warrior", "goblin", "warrior") == 0
     assert capsys.readouterr().out == ".preview/warrior+goblin.plain.png\n"
     assert previews(demo) == ["warrior+goblin.plain.png"]
-    warrior = sprite_image(loaded, "warrior", scale=6)
-    goblin = sprite_image(loaded, "goblin", scale=6)
+    warrior = sprite_image(loaded, "warrior", scale=6, display=True)
+    goblin = sprite_image(loaded, "goblin", scale=6, display=True)
     with Image.open(demo / ".preview" / "warrior+goblin.plain.png") as image:
         image = image.convert("RGBA")
         assert image.size == (warrior.width, warrior.height + goblin.height)
@@ -477,6 +522,21 @@ def test_on_takes_scale_as_the_common_factor_and_ignores_grid(demo):
     assert run("warrior", "--on", "ground_light", "--scale", "1", "--grid") == 0
     with Image.open(demo / ".preview" / "warrior.on-ground_light.png") as image:
         assert image.size == (64 + 2 * MARGIN, 64 + 2 * MARGIN)
+
+
+def test_on_with_scale_display_is_the_pair_as_the_game_draws_them(demo, loaded):
+    assert run("warrior", "--on", "ground_light", "--scale", "display") == 0
+    project, sprites = loaded
+    with Image.open(demo / ".preview" / "warrior.on-ground_light.png") as image:
+        expected = preview.on_tile(project, sprites["warrior"], sprites["ground_light"], scale=1)
+        assert image.convert("RGBA").tobytes() == expected.tobytes()
+
+
+def test_the_contact_sheet_ignores_scale(demo, loaded):
+    assert run("--scale", "display") == 0
+    project, sprites = loaded
+    with Image.open(demo / ".preview" / "sheet.png") as image:
+        assert image.convert("RGBA").tobytes() == preview.contact_sheet(project, sprites.values()).tobytes()
 
 
 def test_no_ids_writes_the_contact_sheet(demo, capsys, loaded):

@@ -35,6 +35,8 @@ def test_parsed_arguments():
     )  # fmt: skip
     args = cli.build_parser().parse_args(["preview", "a", "b", "--on", "grass"])
     assert (args.ids, args.on, args.scale, args.grid, args.sheet) == (["a", "b"], "grass", None, False, False)
+    assert cli.build_parser().parse_args(["preview", "a", "--scale", "3"]).scale == 3
+    assert cli.build_parser().parse_args(["preview", "a", "--scale", "display"]).scale == "display"
     args = cli.build_parser().parse_args(["check", "x.png", "--canvas", "tile"])
     assert (args.paths, args.canvas) == (["x.png"], "tile")
     args = cli.build_parser().parse_args(["build"])
@@ -56,6 +58,7 @@ USAGE_ERRORS = {
     "import without png": ["import", "--canvas", "unit"],
     "scale not an integer": ["preview", "--scale", "big"],
     "scale zero": ["preview", "--scale", "0"],
+    "import scale display": ["import", "hero.png", "--canvas", "unit", "--scale", "display"],
     "init takes no project": ["init", "--project", "p"],
 }
 
