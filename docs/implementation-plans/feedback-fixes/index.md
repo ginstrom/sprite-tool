@@ -41,7 +41,7 @@ Every task file repeats these.
 | 02 | [Automatic outline](02-auto-outline.md) | `outline = "auto"` draws the outline; edge faults reported with their own wording | 01 | done |
 | 03 | [`build = false`](03-build-false.md) | A sprite that is checked and previewed and never exported | none | done |
 | 04 | [Adopt by id](04-adopt-by-id.md) | `build --adopt [id ...]`, `adopted` lines, new stop message | 03 | done |
-| 05 | [Export index, demo sprites and golden files](05-export-index-demo-golden.md) | `sprites.json` in `frames`, `canvas` and `bounds` in the `godot` index, two new demo sprites, regenerated golden files | 01, 02, 03 | pending |
+| 05 | [Export index, demo sprites and golden files](05-export-index-demo-golden.md) | `sprites.json` in `frames`, `canvas` and `bounds` in the `godot` index, two new demo sprites, regenerated golden files | 01, 02, 03 | done |
 | 06 | [Preview at game size](06-preview-game-size.md) | Game-size frames beside the enlarged ones; `--scale display` | none | pending |
 | 07 | [Guide and template](07-guide-template.md) | Guide states key rules, exports, removed keys, runs, auto outline, `build = false` | 01, 02, 03, 04, 05 | pending |
 | 08 | [Documentation, version 0.3.0 and acceptance](08-docs-release-acceptance.md) | Base design, README and AGENTS.md brought in line; version set; manual acceptance run | 01 to 07 | pending |
@@ -194,4 +194,20 @@ record it there.
   - An unknown id is reported even when no file needs adopting, and with no sprites in the build the list reads `(sprites: none)`, as in `cli._preview`.
   - Giving an id twice is accepted.
   - Steps 07 and 08: the README still describes only the bare `--adopt` (command table and the safe-writes section), `AGENTS.md` still has the old output rule, and the guide does not mention `--adopt` at all.
+- **No deviation** from the task file.
+
+### Step 05: Export index, demo sprites and golden files (2026-10-11, commits `faacf42`, `648de2a`)
+
+- **Evidence.** `make check`: 1063 passed (1035 before the step), then `ok: 6 sprites, 8 frames`. `uv run sprite build --project examples/demo` twice prints `built: 5 sprites, 7 frames, 3 targets` each time and `git status` shows nothing new (the integration checkpoint after 05). The headless Godot test ran, not skipped.
+- **Golden files.** `make golden` run once. 23 files (20 before): 12 text, 11 PNG. New: `frames/slime.png`, `frames/sprites.json`, `godot/slime.tres`. Changed, as the task file expected: the frames manifest (key `frames:sprites`, two more files), the godot manifest (`slime.tres`), `godot/atlas.json` (`canvas`, `bounds`, the `slime` entry, moved rectangles), the regions in three `.tres` files, `phaser/atlas.json` and both sheets. Nothing for `sample_slime`.
+- **Criteria.** A21 is the two `test_a21_*` tests and A22 is `test_a22_build_check_flags_the_index_after_a_display_scale_edit`, in `tests/test_build.py` under "the index". The pure functions are in `tests/test_export_index.py`; the entry's shape is in `tests/test_export_frames.py` and `tests/test_export_godot.py`; `name` on a frames target is in `tests/test_project.py`. One A21 test compares every frame's `bounds` with the bounding box of the exported PNG.
+- **Demo sprites.** `units/slime.sprite.toml` is 14 rows of runs with `outline = "auto"`. `units/sample_slime.sprite.toml` is the same slime as a full grid with the outline written in, with `build = false`; `tests/test_demo.py` holds the two to the same rows. If the slime's art changes, `sample_slime` must be rewritten to match.
+- **Existing tests changed**, all for the demo's new contents or the new file: the `built:` and `up to date:` lines (`5 sprites, 7 frames`), `ok: 6 sprites, 8 frames`, the id lists in unknown-id messages, `DEMO_FILES`, the manifest key `frames:sprites`, E401 counts in `tests/test_build.py` (the index is one more file), the golden counts, the contact sheet tests in `tests/test_preview.py` (five unit cells as wide as `sample_slime`), and `"name on frames"` in `tests/test_project.py`, which was an error case and is now two (not a string, empty). The demo fixtures in `tests/test_export_godot.py` and `tests/test_export_phaser.py` now drop sprites with `build = false`, as `cli._build` does.
+- **Choices later steps may meet.**
+  - A frames target with no sprites still writes `<name>.json`, holding `{}`, as the godot target does.
+  - `project.DEFAULT_INDEX_NAME` is `"sprites"`. `ExportTarget.name` is never `None` for a target loaded from a config; `manifest.target_key` still handles `None` for targets built by hand in tests.
+  - When a sprite leaves the build, `sprites.json` is rewritten and `build --check` reports it as `stale` beside the sprite's `no longer generated` files.
+  - Step 06: the demo's contact sheet now has five units (`goblin`, `sample_slime`, `slime`, `warrior`, `warrior_red`); `UNIT_IDS` in `tests/test_preview.py` lists them.
+  - Step 07: the demo's lines are `ok: 6 sprites, 8 frames` and `built: 5 sprites, 7 frames, 3 targets`. The docstring of `manifest.target_key` already says `frames:sprites`.
+  - Step 08: `export/index.py` (`bounds`, `union`, `sprite_entry`) is not yet in the layout in `AGENTS.md`.
 - **No deviation** from the task file.
