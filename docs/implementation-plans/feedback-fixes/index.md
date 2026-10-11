@@ -44,7 +44,7 @@ Every task file repeats these.
 | 05 | [Export index, demo sprites and golden files](05-export-index-demo-golden.md) | `sprites.json` in `frames`, `canvas` and `bounds` in the `godot` index, two new demo sprites, regenerated golden files | 01, 02, 03 | done |
 | 06 | [Preview at game size](06-preview-game-size.md) | Game-size frames beside the enlarged ones; `--scale display` | none | done |
 | 07 | [Guide and template](07-guide-template.md) | Guide states key rules, exports, removed keys, runs, auto outline, `build = false` | 01, 02, 03, 04, 05 | done |
-| 08 | [Documentation, version 0.3.0 and acceptance](08-docs-release-acceptance.md) | Base design, README and AGENTS.md brought in line; version set; manual acceptance run | 01 to 07 | pending |
+| 08 | [Documentation, version 0.3.0 and acceptance](08-docs-release-acceptance.md) | Base design, README and AGENTS.md brought in line; version set; manual acceptance run | 01 to 07 | done |
 
 ## Execution order
 
@@ -130,7 +130,7 @@ disagree.
 No blockers. The design's two non-blocking questions need no work here:
 
 1. Writing the same index for the Phaser target. Left out; no game uses that target yet.
-2. `sprite new --runs`. To be decided after the manual acceptance run in step 08 shows which form an agent reaches for; record what you saw there.
+2. `sprite new --runs`. To be decided after the manual acceptance run in step 08 shows which form an agent reaches for; record what you saw there. Recorded in the step 08 entry of the completion log; the decision is still the author's.
 
 ## For implementers
 
@@ -244,3 +244,32 @@ record it there.
   - `--adopt` is its own line under `sprite build`: `also take over files already in an export directory: those of the given sprites, or all`.
   - Step 08: the guide still says nothing of `--scale` or of the game-size frames in a plain preview. Neither is in R18 or this task file. If the manual acceptance run shows an agent needs them, they cost one line; there are three lines to spare under the limit of 80.
 - **No other deviation** from the task file.
+
+### Step 08: Documentation, version 0.3.0 and acceptance (2026-10-11, commit `2707cc1`)
+
+- **Evidence.** `make check`: 1101 passed (no test added or changed), then `ok: 6 sprites, 8 frames`. `uv run sprite --version`: `sprite 0.3.0`. `uv lock` changed one line of `uv.lock`, the project's own version. `git diff --stat` showed nothing under `tests/golden/`. `grep -n "0\.2\.0" README.md` finds two lines, both in the upgrade note. Every relative link and `#` anchor in `README.md`, `AGENTS.md`, `docs/designs/sprite-tool.md` and this file resolves (checked by a script). From a clean clone of `2707cc1` (`git clone`, `uv sync`, `make check`): 1101 passed, `ok: 6 sprites, 8 frames`, `sprite 0.3.0`, and two builds of the demo left `git status` empty.
+- **Base design.** Every section in the design's list is changed: 2 (Q2, the non-goal, A9, A13), 4.3, 4.4, 4.5, 4.6, 4.7, 4.8 and 5.3. Also 5.2, which gains `export/index.py`. An "Amended" line is at the top. The message texts written there (E103 and E104 for a run, E201 for an auto sprite in a table frame) were first printed by `sprite check` on a scratch project and copied from its output.
+- **README.** Besides the items in the task file: a second example at the top (runs with `outline = "auto"`), a "Sprite files" section for the three new settings, a paragraph on game-size frames under Previews, a `frames` block in the export example, and "Upgrading from 0.2.0" before "More".
+- **Manual acceptance.** In a copy of `~/play/yomi/art` under the session's scratch directory; its one target, `../public/assets/sprites`, resolves inside the scratch area. No file under `~/play/yomi` was written.
+  - **Unit:** `kobold` (one frame, 32x32, with a spear the full height of the canvas). Rewritten as `[frames.idle_0.runs]` with `outline = "auto"`: 30 lines of runs in place of 32 rows of 32 characters.
+  - **Script:** none. The runs were written by hand from the old grid by leaving out every `k`.
+  - **Check rounds:** one. `sprite check` printed `ok: 8 sprites, 8 frames` on the first run and `sprite build` printed `built: 8 sprites, 8 frames, 1 target`. The new `kobold.png` is byte-identical to the one built from the hand-outlined grid (`cmp`), so every `k` in the old sprite was a pixel the automatic outline draws, the separating lines inside the body included.
+  - **Preview:** `sprite preview kobold` wrote a 312 by 208 image, looked at: the kobold at 6x, then at 3x, top-aligned.
+  - **What the guide did not say.** Nothing had to be guessed to finish. Two things were inferred and not stated: that with `grounded` the interior stops at row 30 and the outline supplies the bottom row (it follows from "one pixel inside the canvas edge"), and that a one-pixel gap between two drawn parts fills with the outline key. The guide was not changed; it stays at 76 lines for the demo.
+  - **Grid or runs first:** runs, but the task file named the form, so this run does not show what an agent would choose unprompted. What it does show: `sprite new` was not used, because the 32 rows of dots it writes are no help for a runs frame; the file was written from nothing. That is a point in favour of `sprite new --runs` (design question 2).
+  - **Limit of this run.** It was done in the session that wrote these documents, after reading both designs, so "using only `sprite guide`" held for the drawing and not for what the implementer already knew. A trial by an agent in a fresh session in the game repository would be the stricter test.
+- **Not done, by plan decision P12:** `git tag -a v0.3.0`, and pushing the branch and the tag.
+- **No deviation** from the task file.
+
+### Plan complete (2026-10-11)
+
+Every row in the task table is `done`. The overall completion criteria:
+
+- **`make check` passes from a clean clone with `uv` installed.** Yes: 1101 passed and `ok: 6 sprites, 8 frames`, in a clone of `2707cc1`.
+- **Every acceptance criterion A16 to A27 has an automated test.** Yes: each has at least one test named `test_a<n>_...` under `tests/` (A16 1, A17 1, A18 2, A19 1, A20 1, A21 2, A22 1, A23 2, A24 1, A25 11, A26 1, A27 2).
+- **`uv run sprite build --project examples/demo` run twice leaves `git status` clean.** Yes, in the clean clone.
+- **Pillow is the only runtime dependency, and the version is `0.3.0`.** Yes: `dependencies = ["pillow>=12.3,<12.4"]`, `version = "0.3.0"`.
+- **The manual acceptance run is recorded.** Yes, in the step 08 entry above.
+- **Integration checkpoint after 08.** `make check` passes from a clean clone and `uv run sprite --version` prints `sprite 0.3.0`.
+
+What remains is the author's: `git tag -a v0.3.0`, then push the branch and the tag.
