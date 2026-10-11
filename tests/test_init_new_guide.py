@@ -4,10 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from conftest import write_project
+from conftest import MINIMAL_CONFIG, write_project
 from sprite_tool import __version__
 from sprite_tool.cli import main
+from sprite_tool.preview import GRID_LABEL_EVERY
 from sprite_tool.project import load
+from sprite_tool.spritefile import load_all
 
 DEMO = Path(__file__).parent.parent / "examples" / "demo"
 
@@ -147,6 +149,13 @@ def test_template_config(empty):
     assert tomllib.loads(text)["palette"] == "palette.toml"
     assert '# type = "phaser"' in text
     assert '# type = "godot"' in text
+
+
+def test_template_config_says_which_key_auto_outline_draws_with(empty):
+    assert main(["init"]) == 0
+    lines = (empty / "sprite-tool.toml").read_text(encoding="utf-8").splitlines()
+    (outline,) = [line for line in lines if line.startswith("outline = ")]
+    assert 'outline = "auto" draws with the first' in outline
 
 
 def test_commented_out_export_hints_are_valid_config(empty):
@@ -305,7 +314,7 @@ def guide(root: Path, capsys) -> str:
 def test_a13_demo_guide_is_short_and_lists_the_palette_and_canvas_classes(capsys):
     text = guide(DEMO, capsys)
     lines = text.splitlines()
-    assert len(lines) < 60
+    assert len(lines) < 80
     assert max(len(line) for line in lines) <= 100
     assert text.isascii()
 
@@ -429,3 +438,139 @@ def test_guide_covers_what_the_agent_trial_had_to_guess(capsys):
     assert "Sprite files may be anywhere in the project" in text
     assert "A replacement row is a full row" in text
     assert "Frame names are free" in text
+
+
+# --- guide, 0.3 ---------------------------------------------------------------
+
+
+def flat(text: str) -> str:
+    """`text` with every run of whitespace as one space, so a phrase matches across a line break."""
+    return " ".join(text.split())
+
+
+def exports_section(root: Path, capsys) -> list[str]:
+    """The lines of the guide's EXPORTS section, heading first."""
+    lines = guide(root, capsys).splitlines()
+    start = next(index for index, line in enumerate(lines) if line.startswith("EXPORTS"))
+    end = lines.index("", start)
+    return lines[start:end]
+
+
+def test_a26_demo_guide_states_key_rules_exports_and_removed_keys_in_under_80_lines(capsys):
+    lines = guide(DEMO, capsys).splitlines()
+    assert len(lines) < 80
+    text = flat("\n".join(lines))
+
+    assert "A key is one printable ASCII character except . \" ' \\ and space" in text
+    assert "a palette holds up to 90 colours" in text
+    assert "Removing or renaming a key breaks every sprite that uses it" in text
+    assert "check reports each use as E104 and build writes nothing until they are fixed" in text
+
+    assert "EXPORTS  sprite build writes these; do not edit them by hand" in lines
+    assert (
+        "frames out/frames <id>.png (the default frame), <id>__<frame>.png when a sprite has several"
+        " frames, sprites.json (size, anchor, scale, bounds)"
+    ) in text
+    assert "phaser out/phaser atlas.png, atlas.json, atlas.anims.json" in text
+    assert "godot out/godot atlas.png, atlas.json (the index), one <id>.tres per sprite" in text
+
+
+def test_the_palette_limit_in_the_guide_is_the_number_of_keys_a_palette_accepts(tmp_path, capsys):
+    allowed = [chr(code) for code in range(0x21, 0x7F) if chr(code) not in ".\"'\\"]
+    palette = "[colors]\n" + "".join(f"'{key}' = \"#000000\"\n" for key in allowed)
+    root = write_project(tmp_path / "p", MINIMAL_CONFIG, palette)
+
+    project, problems = load(root)
+    assert problems == []
+    assert f"a palette holds up to {len(project.palette)} colours" in flat(guide(root, capsys))
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        'runs = { 2 = [[2, "ww"]] }',
+        "optional: the frame to start from",
+        "# 1. replace whole rows",
+        "# 2. replace pixels",
+        "# 3. move by [dx, dy]",
+        "# 4. mirror left to right",
+        "[frames.main.runs]",
+        "build = false",
+        'outline = "auto"',
+        "draw the interior only, one pixel inside the canvas edge",
+        f"--grid labels every {GRID_LABEL_EVERY}th row and column",
+        "sprite build --adopt [<id>...]",
+    ],
+)
+def test_guide_covers_runs_auto_outline_build_false_and_the_new_command_forms(capsys, phrase):
+    assert phrase in flat(guide(DEMO, capsys))
+
+
+def test_the_runs_line_in_the_guide_example_changes_its_frame(tmp_path):
+    from sprite_tool.guide import EXAMPLE
+
+    def idle_1(name: str, text: str) -> tuple[str, ...]:
+        config = MINIMAL_CONFIG.replace("[32, 32]", "[6, 4]").replace("[16, 32]", "[0, 0]")
+        palette = "[colors]\n" + "".join(f'{key} = "#000000"\n' for key in "kwbBrR")
+        root = write_project(tmp_path / name, config, palette)
+        (root / "gem.sprite.toml").write_text(text, encoding="utf-8")
+        project, _ = load(root)
+        sprites, problems = load_all(project)
+        assert problems == []
+        return next(frame.rows for frame in sprites[0].frames if frame.name == "idle_1")
+
+    runs_lines = [line for line in EXAMPLE.splitlines(keepends=True) if line.startswith("runs = ")]
+    assert len(runs_lines) == 1
+    with_runs = idle_1("with", EXAMPLE)
+    without = idle_1("without", EXAMPLE.replace(runs_lines[0], ""))
+
+    changed = [index for index, (new, old) in enumerate(zip(with_runs, without)) if new != old]
+    assert changed == [2]
+
+
+def test_guide_lists_the_outline_key_that_auto_draws_with_first(tmp_path, capsys):
+    config = MINIMAL_CONFIG + 'outline = ["w", "k", "g"]\n'
+    root = write_project(tmp_path / "p", config)
+    text = guide(root, capsys)
+
+    assert "unit  32x32  anchor 16,32  display scale 1  outline w g k" in text.splitlines()
+    assert "the tool draws the outline with the first key listed" in flat(text)
+
+
+def test_guide_exports_with_no_targets(tmp_path, capsys):
+    root = write_project(tmp_path / "p", MINIMAL_CONFIG)
+    assert exports_section(root, capsys) == ["EXPORTS  none configured"]
+
+
+def test_guide_exports_one_frames_target_with_its_index_name_and_a_directory_outside_the_project(tmp_path, capsys):
+    config = MINIMAL_CONFIG + '\n[[export]]\ntype = "frames"\nout = "../public/assets/sprites"\nname = "units"\n'
+    root = write_project(tmp_path / "game" / "sprites", config)
+    section = exports_section(root, capsys)
+
+    assert section[0] == "EXPORTS  sprite build writes these; do not edit them by hand"
+    assert section[1].startswith("frames  ../public/assets/sprites  <id>.png (the default frame), ")
+    assert "units.json (size, anchor, scale, bounds)" in flat("\n".join(section))
+    assert "sprites.json" not in "\n".join(section)
+    assert [line.split()[0] for line in section[1:] if not line.startswith(" ")] == ["frames"]
+
+
+def test_guide_exports_three_targets_in_config_order_with_their_names(project_dir, capsys):
+    section = exports_section(project_dir, capsys)
+    text = flat("\n".join(section))
+
+    assert [line.split()[0] for line in section[1:] if not line.startswith(" ")] == ["frames", "phaser", "godot"]
+    assert "frames ../assets/frames <id>.png (the default frame)" in text
+    assert "sprites.json (size, anchor, scale, bounds)" in text
+    assert "phaser ../public/assets/sprites atlas.png, atlas.json, atlas.anims.json" in text
+    assert "godot out/godot sheet.png, sheet.json (the index), one <id>.tres per sprite" in text
+
+
+def test_guide_exports_with_a_long_directory_stay_within_100_columns(tmp_path, capsys):
+    out = "../" + "assets/" * 9 + "sprites"
+    config = MINIMAL_CONFIG + f'\n[[export]]\ntype = "frames"\nout = "{out}"\n'
+    root = write_project(tmp_path / "game" / "sprites", config)
+    section = exports_section(root, capsys)
+
+    assert section[1] == f"frames  {out}"
+    assert max(map(len, section)) <= 100
+    assert "sprites.json (size, anchor, scale, bounds)" in flat("\n".join(section))

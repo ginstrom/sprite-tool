@@ -8,7 +8,7 @@ palette = "palette.toml"
 size = [32, 32]          # width, height in pixels
 anchor = [16, 32]        # exported as the pivot; here bottom centre
 display_scale = 2        # how much the game enlarges this class
-outline = ["k"]          # edge pixels must use one of these palette keys
+outline = ["k"]          # edge pixels must use one of these keys; outline = "auto" draws with the first
 grounded = true          # the bottom row of every frame must have a pixel
 
 [canvas.tile]
