@@ -38,22 +38,41 @@ Colour = tuple[int, int, int, int]
 
 
 def sprite_preview(
-    project: Project, sprite: Sprite, variants: Iterable[Sprite], scale: int, grid: bool = False
+    project: Project,
+    sprite: Sprite,
+    variants: Iterable[Sprite],
+    scale: int,
+    grid: bool = False,
+    display: bool = False,
 ) -> Image.Image:
-    """Every frame of `sprite` left to right, then one row per variant, by id."""
-    background = project.preview.background
+    """Every frame of `sprite` left to right, then one row per variant, by id.
+
+    With `display`, each row's frames follow again at the class's
+    `display_scale`, the size the game draws them, top-aligned and without the
+    grid. They are left out when that is `scale`.
+    """
     rows = [sprite, *sorted(variants, key=lambda variant: variant.id)]
-    tiles = [[_frame_tile(project, frame, scale, grid) for frame in row.frames] for row in rows]
-    tile_w, tile_h = tiles[0][0].size
-    columns = max(len(row) for row in tiles)
+    # Each group is every row's tiles at one size; the groups stand side by side.
+    groups = [[[_frame_tile(project, frame, scale, grid) for frame in row.frames] for row in rows]]
+    game_scale = sprite.canvas.display_scale
+    if display and game_scale != scale:
+        groups.append([[_frame_tile(project, frame, game_scale, False) for frame in row.frames] for row in rows])
+    columns = max(len(row.frames) for row in rows)
+    sizes = [group[0][0].size for group in groups]
+    row_h = max(tile_h for _, tile_h in sizes)
+    # Where each group starts: after the group before it and a gap.
+    lefts = [MARGIN]
+    for tile_w, _ in sizes:
+        lefts.append(lefts[-1] + columns * (tile_w + GAP))
     image = Image.new(
         "RGBA",
-        (2 * MARGIN + columns * tile_w + (columns - 1) * GAP, 2 * MARGIN + len(tiles) * tile_h + (len(tiles) - 1) * GAP),
-        background,
+        (lefts[-1] - GAP + MARGIN, 2 * MARGIN + len(rows) * row_h + (len(rows) - 1) * GAP),
+        project.preview.background,
     )
-    for r, row in enumerate(tiles):
-        for c, tile in enumerate(row):
-            image.paste(tile, (MARGIN + c * (tile_w + GAP), MARGIN + r * (tile_h + GAP)))
+    for group, left, (tile_w, _) in zip(groups, lefts, sizes):
+        for r, row in enumerate(group):
+            for c, tile in enumerate(row):
+                image.paste(tile, (left + c * (tile_w + GAP), MARGIN + r * (row_h + GAP)))
     return image
 
 

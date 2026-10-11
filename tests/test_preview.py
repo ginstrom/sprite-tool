@@ -110,6 +110,74 @@ def test_variant_rows_are_sorted_by_id(loaded):
     )
 
 
+# Game size
+
+# The demo's `unit` class: 32 pixels square, drawn by the game at `display_scale` 2.
+ENLARGED, GAME = 32 * 6, 32 * 2
+
+
+def test_one_frame_is_followed_by_the_same_frame_at_game_size(loaded):
+    image = sprite_image(loaded, "goblin", scale=6, display=True)
+    assert image.size == (2 * MARGIN + ENLARGED + GAP + GAME, 2 * MARGIN + ENLARGED)
+
+
+def test_game_size_frames_follow_all_the_enlarged_ones(loaded):
+    image = sprite_image(loaded, "warrior", scale=6, display=True)
+    width = 2 * MARGIN + 2 * ENLARGED + GAP + GAP + 2 * GAME + GAP
+    # The height is set by the enlarged frames: the sprite's row and its variant's.
+    assert image.size == (width, 2 * ENLARGED + GAP + 2 * MARGIN)
+    plain = sprite_image(loaded, "warrior", scale=6)
+    assert image.crop((0, 0, plain.width - MARGIN, plain.height)).tobytes() == (
+        plain.crop((0, 0, plain.width - MARGIN, plain.height)).tobytes()
+    )
+
+
+def test_game_size_frames_are_top_aligned_with_each_art_pixel_a_block(loaded):
+    image = sprite_image(loaded, "warrior", scale=6, display=True)
+    left = MARGIN + 2 * (ENLARGED + GAP)
+    # Row 14, column 10 of the warrior is `b`.
+    assert image.crop((left + 10 * 2, MARGIN + 14 * 2, left + 11 * 2, MARGIN + 15 * 2)).getcolors() == [(4, BLUE)]
+    # `idle_1` differs from `idle_0` in row 9: column 17 is `o` instead of `k`.
+    x, y = left + 17 * 2, MARGIN + 9 * 2
+    assert image.getpixel((x, y)) == OUTLINE
+    assert image.getpixel((x + GAME + GAP, y)) == ORANGE
+    # Both frames of the row are the ones a preview at the game's scale draws.
+    game = sprite_image(loaded, "warrior", scale=2)
+    row = (2 * GAME + GAP, GAME)
+    assert image.crop((left, MARGIN, left + row[0], MARGIN + row[1])).tobytes() == (
+        game.crop((MARGIN, MARGIN, MARGIN + row[0], MARGIN + row[1])).tobytes()
+    )
+    # Under them, as far as the bottom of the enlarged row, is background.
+    under = image.crop((left, MARGIN + GAME, image.width, MARGIN + ENLARGED))
+    assert under.getcolors() == [(under.width * under.height, BACKGROUND)]
+
+
+def test_gap_between_the_enlarged_and_the_game_size_frames_is_background(loaded):
+    image = sprite_image(loaded, "warrior", scale=6, display=True)
+    left = MARGIN + 2 * ENLARGED + GAP
+    gap = image.crop((left, 0, left + GAP, image.height))
+    assert gap.getcolors() == [(GAP * image.height, BACKGROUND)]
+
+
+def test_variant_rows_carry_their_own_game_size_frames(loaded):
+    image = sprite_image(loaded, "warrior", scale=6, display=True)
+    x, y = MARGIN + 2 * (ENLARGED + GAP) + 10 * 2, MARGIN + ENLARGED + GAP + 14 * 2
+    assert image.getpixel((x, y)) == RED
+    assert image.getpixel((x + GAME + GAP, y)) == RED
+
+
+def test_game_size_frames_are_left_out_when_the_scales_are_equal(loaded):
+    assert sprite_image(loaded, "warrior", scale=2, display=True).tobytes() == (
+        sprite_image(loaded, "warrior", scale=2).tobytes()
+    )
+
+
+def test_game_size_frames_may_be_the_larger_ones(loaded):
+    """A preview scale under `display_scale` still gets them; the taller group sets the height."""
+    image = sprite_image(loaded, "goblin", scale=1, display=True)
+    assert image.size == (2 * MARGIN + 32 + GAP + GAME, 2 * MARGIN + GAME)
+
+
 # Grid
 
 
