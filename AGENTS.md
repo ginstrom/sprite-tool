@@ -5,6 +5,11 @@ definitions into pixel art for Godot 4 and Phaser. The design is in
 [docs/designs/sprite-tool.md](docs/designs/sprite-tool.md) and the
 implementation plan in
 [docs/implementation-plans/sprite-tool/index.md](docs/implementation-plans/sprite-tool/index.md).
+Release 0.3 amended both:
+[docs/designs/feedback-fixes.md](docs/designs/feedback-fixes.md) is its design
+and
+[docs/implementation-plans/feedback-fixes/index.md](docs/implementation-plans/feedback-fixes/index.md)
+its plan.
 
 ## Commands
 
@@ -27,8 +32,10 @@ Everything runs through `uv`.
 - **Tests.** No test may need a display or the network. Tests write only under
   pytest's `tmp_path`; they never write into `examples/demo/` or
   `tests/golden/`.
-- **Output.** Success prints one summary line; `init` alone adds a second,
-  the note for agents (`cli.agent_note`). Each problem is one line on
+- **Output.** Success prints one summary line. Two commands add to it:
+  `init` prints a second line, the note for agents (`cli.agent_note`), and
+  `build --adopt` prints one `adopted <path>` line per file it took over,
+  before the summary. Each problem is one line on
   stdout. No colour, banners or progress output. Exit codes: `0` success, `1`
   check failures, `2` usage or config error (message on stderr as
   `error: <message>`).
@@ -91,9 +98,13 @@ fails when a fresh build of the demo differs from it by a byte.
 - `src/sprite_tool/pack.py`: the shelf packer. Works on sizes only.
 - `src/sprite_tool/export/atlas.py`: `compose_sheet`, the one sheet layout
   shared by the atlas targets.
+- `src/sprite_tool/export/index.py`: `bounds` and `union`, the box of a
+  frame's drawn pixels, and `sprite_entry`, the keys the `frames` and `godot`
+  indexes share. Bounds come from the text rows, not from images.
 - `src/sprite_tool/export/__init__.py`: `EXPORTERS`, one exporter per target
   type. An exporter returns `{relative path: bytes}` and never touches the
-  disk. `export/frames.py` is the loose-PNG target; `export/phaser.py` is the
+  disk. `export/frames.py` is the loose-PNG target, which also writes the
+  index `<name>.json` (`sprites.json` by default); `export/phaser.py` is the
   Phaser atlas target (sheet, JSON Hash atlas, animation JSON);
   `export/godot.py` is the Godot target (sheet, a `SpriteFrames` `.tres` per
   sprite, JSON index). `tests/test_export_godot.py` loads the export in
@@ -106,7 +117,8 @@ fails when a fresh build of the demo differs from it by a byte.
 - `src/sprite_tool/importer.py`: `import_png` and `to_rows`, a PNG to the grid
   of a sprite file for `sprite import`, and `sprite_text`, the file it writes.
 - `src/sprite_tool/manifest.py`: the only code that creates, overwrites or
-  deletes export files (`plan`, `check_ownership`, `apply`, `compare`), and
+  deletes export files (`plan`, `check_ownership`, `apply`, `compare`),
+  `belongs_to`, the rule for which files `build --adopt <id>` takes, and
   `json_bytes`, the one JSON encoder for generated files.
 - `tests/conftest.py`: `write_project` and the `project_dir` fixture for
   building a project under `tmp_path`; `make_frame`, `make_sprite` and

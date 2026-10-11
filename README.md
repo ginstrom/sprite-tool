@@ -20,13 +20,25 @@ kbBBbk
 """
 ```
 
+A sprite can also leave the outline to the tool and give only the pixels it
+draws, as runs: a row, then `[column, "pixels"]` pairs.
+
+```toml
+canvas = "unit"
+outline = "auto"
+[frames.main.runs]
+1 = [[1, "bwwb"]]
+2 = [[1, "bBBb"]]
+```
+
 ## When to use it, and when not
 
 Use it for small, palette-limited sprites (units, tiles, icons) in a
 turn-based or otherwise low-frame-count game, where you want the art in
 version control as reviewable text and the exported files to be reproducible.
 
-It is not a drawing program. It has no GUI, no drawing helpers, no watch mode,
+It is not a drawing program. It has no GUI, no drawing helpers beyond the
+automatic outline, no watch mode,
 no frame trimming or rotation in the packer, no tilemap export, and no engines
 other than Godot 4 and Phaser. If the art is drawn in Aseprite or similar,
 export from there instead; `sprite import` is for bringing a few existing PNGs
@@ -41,22 +53,22 @@ With [uv](https://docs.astral.sh/uv/), which fetches Python 3.11 or later if
 it is missing:
 
 ```sh
-uv tool install git+https://github.com/ginstrom/sprite-tool@v0.2.0
-sprite --version         # sprite 0.2.0
+uv tool install git+https://github.com/ginstrom/sprite-tool@v0.3.0
+sprite --version         # sprite 0.3.0
 ```
 
 Name a tag, as above, so that everyone on a game builds the same files; leave
-`@v0.2.0` off to follow `main`. To move to a newer release, run the command
+`@v0.3.0` off to follow `main`. To move to a newer release, run the command
 again with the new tag and `--force`. The tool is not on PyPI.
 
 Other ways to run it:
 
 ```sh
 # without installing, for example in CI
-uvx --from git+https://github.com/ginstrom/sprite-tool@v0.2.0 sprite build --check
+uvx --from git+https://github.com/ginstrom/sprite-tool@v0.3.0 sprite build --check
 
 # with pipx
-pipx install git+https://github.com/ginstrom/sprite-tool@v0.2.0
+pipx install git+https://github.com/ginstrom/sprite-tool@v0.3.0
 ```
 
 Install it as a tool, as above, and not as a dependency of a Python game. It
@@ -90,7 +102,7 @@ sprite init art          # the art project, in a directory of the game repositor
 
   ```yaml
   - uses: astral-sh/setup-uv@v6
-  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.2.0 sprite build --check --project art
+  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.3.0 sprite build --check --project art
   ```
 
 ## Quick start
@@ -106,9 +118,10 @@ sprite build             # check everything, then write the game's files
 ```
 
 `sprite guide` is the reference for drawing. It prints the sprite file format
-(grids, derived frames, animations, palette-swap variants), the project's
-palette and its canvas classes in under 60 lines, and it is the only thing an
-agent needs to read before adding a sprite.
+(grids, runs, derived frames, animations, palette-swap variants), the
+project's palette, its canvas classes and what each export target writes, in
+under 80 lines, and it is the only thing an agent needs to read before adding
+a sprite.
 
 A project is a directory with `sprite-tool.toml` (canvas classes, preview
 settings and export targets), `palette.toml`, and any number of
@@ -127,16 +140,38 @@ the current directory.
 | `sprite guide` | Print the format reference, palette and canvas classes. |
 | `sprite new <id> --canvas <class> [--dir <subdir>]` | Write a blank sprite file. |
 | `sprite check [<file>...] [--canvas <class>]` | Check every sprite file, or the given sprite files and PNGs. |
-| `sprite preview [<id>...] [--grid] [--scale N] [--on <tile-id>] [--sheet]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. |
-| `sprite build [--check] [--adopt]` | Check everything, then write every export target. |
+| `sprite preview [<id>...] [--grid] [--scale N\|display] [--on <tile-id>] [--sheet]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. |
+| `sprite build [--check] [--adopt [<id>...]]` | Check everything, then write every export target. |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. |
 | `sprite --version` | Print the tool's version. |
 
 Output is meant to be cheap to read. Success prints one summary line (`init`
-adds the line for agents). Each
+adds the line for agents, and `build --adopt` one line per file it took
+over). Each
 problem is one line, `path:line:col: CODE message`. There is no colour and no
 progress output. Exit codes are `0` for success, `1` for check failures and
 `2` for a usage or configuration error (`error: <message>` on stderr).
+
+### Sprite files
+
+`sprite guide` has the format in full. Three things in it are new in 0.3.0:
+
+- **`runs`** in a frame table place pixels by position:
+  `runs = { 9 = [[13, "ddsskh"]] }` writes six pixels in row 9 from column
+  13, counting from 0. In a frame with `from` they change only those pixels,
+  and `.` erases. A frame can also be runs alone, with no grid and no `from`:
+  a `[frames.main.runs]` table with one line for each row that has pixels. The
+  rest of the canvas stays transparent.
+- **`outline = "auto"`** at the top of a file: draw the interior only, one
+  pixel inside the canvas edge, and the tool draws the outline, with the first
+  key in the canvas class's `outline` list. A pixel is outlined from above,
+  below, left and right, not diagonally, so corners come out rounded.
+- **`build = false`** at the top of a file: the sprite is checked, previewed
+  and shown on the contact sheet, and never exported. It is for a reference
+  sprite kept beside the real ones. Its file name is still its id, so a
+  reference copy of `warrior` needs another name, such as
+  `sample_warrior.sprite.toml`, and a fault in it fails the build like any
+  other.
 
 ### Previews
 
@@ -151,6 +186,11 @@ one kind does not overwrite another:
 | `sprite preview archer --on grass` | `archer.on-grass.png` |
 | `sprite preview archer warrior --grid` | `archer+warrior.grid.png` |
 | `sprite preview`, or `--sheet` | `sheet.png` |
+
+`sprite preview archer` draws each frame enlarged by `[preview] scale`, and
+beside them the same frames at the class's `display_scale`, which is the size
+the game shows. `--scale display` draws only the game-size frames, each sprite
+at its own class's scale; it cannot be combined with `--grid`.
 
 A sprite with only style problems (an outline or grounded fault, an empty
 frame) is still drawn: the problems are printed first, then the path, and the
@@ -170,6 +210,10 @@ to the project directory and normally points into the game repository.
 
 ```toml
 [[export]]
+type = "frames"
+out = "../game/public/sprites"
+
+[[export]]
 type = "phaser"
 out = "../game/public/sprites"
 name = "atlas"
@@ -183,12 +227,40 @@ res_path = "res://assets/sprites"
 
 `phaser` and `godot` pack every sprite, whatever its canvas size, into one
 sheet with 1 pixel of padding (set `padding` to change it). A variant such as
-`warrior_red` is exported as a sprite of its own.
+`warrior_red` is exported as a sprite of its own. A sprite with
+`build = false` is in no target.
 
 ### `frames`
 
 Loose PNGs, for any other use: `<id>.png` is the sprite's first frame, and a
 sprite with more than one frame also gets `<id>__<frame>.png` for each.
+
+It also writes an index, `sprites.json` (`<name>.json` when the target sets
+`name`), so the game can read what it would otherwise repeat by hand:
+
+```json
+{
+  "goblin": {
+    "anchor": [16, 32],
+    "bounds": [4, 3, 26, 29],
+    "canvas": "unit",
+    "display_scale": 2,
+    "file": "goblin.png",
+    "frames": {
+      "main": { "bounds": [4, 3, 26, 29], "file": "goblin.png" }
+    },
+    "size": [32, 32]
+  }
+}
+```
+
+Each exported sprite, variants included, has its canvas class, `size`,
+`anchor` and `display_scale` from the config, its file names, and `bounds`:
+`[x, y, width, height]` of the drawn pixels on the canvas, from the top left.
+A frame's `bounds` covers that frame and the sprite's covers all its frames,
+so something placed above a unit does not move with its animation. A change
+to `display_scale` or `anchor` in the config changes this file, and
+`sprite build --check` reports it until the project is rebuilt.
 
 ### `phaser`
 
@@ -213,8 +285,9 @@ checked in Phaser 4.2.1.
 ### `godot`
 
 Writes `<name>.png`, one `<id>.tres` (a `SpriteFrames` resource) per sprite,
-and `<name>.json`, an index of each sprite's size, anchor, display scale and
-frame rectangles. `res_path` must be the `res://` path of the `out` directory,
+and `<name>.json`, an index of each sprite's canvas class, size, anchor,
+display scale, bounds (as in `sprites.json`) and frame rectangles on the
+sheet. `res_path` must be the `res://` path of the `out` directory,
 because each `.tres` refers to the sheet by that path.
 
 ```gdscript
@@ -243,10 +316,22 @@ so it can share a directory with hand-made assets:
 - A sprite that is deleted or renamed has its old exported files removed on
   the next build.
 - If a file the tool wants to write already exists and is not on the list, the
-  build stops before writing anything. Run `sprite build --adopt` once to take
+  build stops before writing anything and names the file. `--adopt` takes
   ownership of such files, for example after exporting into a directory that
-  held an older copy of the art.
+  held an older copy of the art:
 
+  - `sprite build --adopt warrior goblin` takes only the files of those
+    sprites: `warrior.png`, `warrior__idle_0.png`, `warrior.tres`. A variant
+    is a sprite of its own, so `warrior_red.png` needs `warrior_red` named as
+    well. If any other unowned file is in the way, the build still stops and
+    writes nothing.
+  - `sprite build --adopt` takes every such file. Files shared by all
+    sprites (`atlas.png`, `atlas.json`, `sprites.json`) belong to no id and
+    need this form.
+
+  Either way the build prints one `adopted <path>` line for each file it took
+  over, before the summary line. `--adopt` only ever touches files the build
+  is about to write, and `build --check` ignores it.
 - If you change a target's `out`, the tool no longer looks at the old
   directory. Delete the generated files there yourself; its manifest lists
   them.
@@ -266,11 +351,29 @@ check:
 	sprite build --check --project art
 ```
 
+## Upgrading from 0.2.0
+
+Projects load and build unchanged. Two things to do once, after moving the
+pin to `v0.3.0`:
+
+- Run `sprite build`. A `frames` target now writes `sprites.json`, so
+  `sprite build --check` fails until the project is rebuilt and the new file
+  committed.
+- If a `sprites.json` made by hand is already in a `frames` directory, the
+  build stops at it. Move it away, or run `sprite build --adopt` once to
+  replace it; or set `name` on the target to write the index under another
+  name.
+
+A sprite file that uses `runs`, `build` or `outline = "auto"` is an error on
+0.2.0, so everyone working on the game needs the new version.
+
 ## More
 
 - [docs/designs/sprite-tool.md](docs/designs/sprite-tool.md) is the design:
   every check code, the config and file formats in full, and the reasons
   behind them.
+  [docs/designs/feedback-fixes.md](docs/designs/feedback-fixes.md) is the
+  design of what 0.3.0 added.
 - [AGENTS.md](AGENTS.md) covers working on the tool itself.
 
 MIT licence.

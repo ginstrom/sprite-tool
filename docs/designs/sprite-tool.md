@@ -4,6 +4,12 @@
 - **Revised:** 2026-10-10, after a review of the finished tool: project
   discovery from above, id rules, W003, de-duplicated outline faults, and
   preview naming and behaviour (4.1, 4.5, 4.6, 4.8).
+- **Amended:** 2026-10-11, for release 0.3.0, by
+  [feedback-fixes.md](feedback-fixes.md): runs, the automatic outline,
+  `build = false`, the sprite index in exports, adopting by id and previews at
+  game size (requirements R13 to R19, criteria A16 to A27). The sections
+  below describe the tool with those changes; the reasons are in that
+  document.
 - **Status:** Ready for planning. No blocking questions; assumptions and
   non-blocking questions are listed in [section 8](#8-open-questions-and-assumptions).
 
@@ -51,14 +57,16 @@ one-shot generation is still cheaper than the setup.
 | ID | Constraint |
 |---|---|
 | Q1 | **Deterministic output.** The same inputs produce byte-identical PNG, JSON and `.tres` files, so generated files can be committed and diffed. |
-| Q2 | **Token-friendly output.** Success prints one summary line. Each problem is one line. No banners, progress bars or colour codes when stdout is not a terminal. |
+| Q2 | **Token-friendly output.** Success prints one summary line (`init` adds a second, and `build --adopt` one line per adopted file). Each problem is one line. No banners, progress bars or colour codes when stdout is not a terminal. |
 | Q3 | **Thin.** One runtime dependency (Pillow). No plugin system, no GUI, no drawing primitives. |
 | Q4 | **Safe writes.** The tool only creates, overwrites or deletes files it generated itself (tracked by a manifest per output directory). |
 | Q5 | A full build of 200 sprites completes in under 2 seconds on a laptop. |
 
 ### Non-goals
 
-- Drawing helpers (lines, fills, shading, auto-outline). The agent writes the grid.
+- Drawing helpers (lines, fills, shading). The agent writes the pixels. The
+  one exception is the automatic outline (4.4), which enforces a rule the tool
+  already owns.
 - An image editor, a GUI, or a watch mode.
 - Trimming frames to their opaque bounding box. Frames always export at full
   canvas size; that is what keeps proportions consistent.
@@ -79,13 +87,13 @@ one-shot generation is still cheaper than the setup.
 | A6 | The Phaser export loads with `this.load.atlas` and `this.load.animation` in Phaser 4, and frames show the expected art. | R7, R8 |
 | A7 | The Godot export loads in Godot 4.7 as a `SpriteFrames` resource with the expected animation names and frame counts. | R7, R8 |
 | A8 | Running `sprite build` twice produces byte-identical output directories. | Q1 |
-| A9 | `sprite preview warrior` writes one PNG at the configured scale and prints only its path. | R9, Q2 |
+| A9 | `sprite preview warrior` writes one PNG and prints only its path. The image holds the frames at the configured scale, then the same frames at the class's display scale (A27 in the amending design). | R9, Q2 |
 | A10 | `sprite import` on a canvas-sized PNG whose colours are all in the palette writes a sprite file that renders back to the identical image. | R10 |
 | A11 | `sprite check some.png --canvas unit` reports off-palette pixels by coordinate and a size mismatch. | R6 |
 | A12 | After a sprite is deleted, `sprite build` removes its generated files and leaves unrelated files in the output directory untouched. | Q4 |
 | A14 | A project with a 32x32 `unit` sprite and a 16x16 `tile` sprite builds; both appear in one atlas at their own sizes, and a 16-wide row in the unit sprite is reported as E103. | R2, R8 |
 | A15 | `sprite preview warrior --on ground_light` writes one PNG showing the unit on the tile, each at its class's display scale. | R9 |
-| A13 | `sprite guide` output for the example project is under 60 lines. | R11, Q2 |
+| A13 | `sprite guide` output for the example project is under 80 lines (60 before 0.3.0; A26 in the amending design). | R11, Q2 |
 
 ## 3. Current system
 
@@ -191,7 +199,7 @@ palette = "palette.toml"
 size = [32, 32]          # width, height in pixels
 anchor = [16, 32]        # pixel point exported as the pivot; here bottom centre
 display_scale = 2        # how much the game enlarges this class; default 1
-outline = ["k"]          # optional style rule, see 4.6
+outline = ["k"]          # optional style rule, see 4.6; the first key is the one `outline = "auto"` draws with
 grounded = true          # optional style rule, see 4.6
 
 [canvas.tile]
@@ -206,6 +214,7 @@ background = "#3a3a3a"
 [[export]]
 type = "frames"
 out = "../assets/sprites"
+name = "sprites"         # optional: the index file, sprites.json; this is the default
 
 [[export]]
 type = "phaser"
@@ -224,8 +233,8 @@ sprite's size comes only from its class; there is no per-sprite size.
 
 `display_scale` records the integer factor the game draws that class at. The
 tool never resizes exported art. It uses the value in previews (4.8) and
-writes it to the Godot index file (4.7) so the game can read it instead of
-hard-coding it. In the template, a 16 px tile at 4x and a 32 px unit at 2x
+writes it to the index files of the `frames` and `godot` targets (4.7) so the
+game can read it instead of hard-coding it. In the template, a 16 px tile at 4x and a 32 px unit at 2x
 both cover a 64 px cell.
 
 All paths are relative to the config file. `[[export]]` may appear any number
@@ -282,15 +291,37 @@ frame is the sprite's **default frame**. A frame name matches
   pixel. It must have exactly the canvas height in lines and the canvas width
   in characters per line. Trailing whitespace on a line is an error. The
   newline directly after the opening `"""` is not a row (standard TOML).
-- a **derived frame**: a table with `from` (required, another frame in the
-  same file) and any of the operations below, applied in this fixed order:
+- a **frame table**: a table with any of the keys below. `from` is optional
+  and names another frame in the same file to start from; without it the
+  frame starts fully transparent. The operations apply in this fixed order:
 
   1. `rows`: a table from zero-based row index to a full replacement row.
-  2. `shift = [dx, dy]`: move all pixels; pixels moved off the canvas are
+  2. `runs`: a table from zero-based row index to a list of runs. A run is
+     `[column, "pixels"]`: a zero-based column and one or more characters,
+     each a palette key or `.`. It replaces exactly those pixels; `.` writes
+     transparency, which is how a derived frame erases. Runs in a row apply
+     in list order, so a later run wins an overlap. An empty list writes
+     nothing.
+  3. `shift = [dx, dy]`: move all pixels; pixels moved off the canvas are
      dropped and vacated pixels are transparent.
-  3. `flip = true`: mirror horizontally.
+  4. `flip = true`: mirror horizontally.
 
-  `from` may point at another derived frame. A cycle is an error.
+  `from` may point at another frame table. A cycle is an error. A table with
+  none of `from`, `rows` and `runs` is E001 (`frame 'x': needs from, rows or
+  runs`).
+
+  ```toml
+  [frames.idle_1]
+  from = "idle_0"
+  runs = { 9 = [[13, "ddsskh"]] }         # row 9, starting at column 13
+
+  [frames.main.runs]                      # a whole frame, no `from`
+  9  = [[13, "ddsskh"]]
+  10 = [[12, "dssssskh"], [24, "kk"]]
+  ```
+
+  A TOML inline table is one line, so a frame with several rows of runs uses
+  the table form, one row per line.
 
 **Animations.** `[anim.<name>]` lists frame names and a per-frame duration in
 milliseconds. Animations are optional; a sprite with none is a set of still
@@ -306,6 +337,33 @@ error.
 `grounded = false` at top level to opt out of a canvas rule. Effects, items
 and projectiles need this.
 
+**Automatic outline.** `outline` takes `true` (the default), `false` or
+`"auto"`; any other value is E001. With `outline = "auto"` the file holds the
+interior only and the tool draws the outline:
+
+- The outline key is the first key in the canvas class's `outline` list. On
+  a class with no `outline` rule the setting is E001
+  (`outline = "auto" needs an outline rule on canvas class 'tile'`).
+- Every transparent pixel with a drawn pixel directly above, below, left or
+  right of it becomes the outline key. It is one pass: new outline pixels
+  grow no further outline. Diagonals do not count, so corners come out
+  rounded. A transparent hole inside the shape is outlined as well, and a
+  one-pixel hole fills completely.
+- It runs once per frame on the final interior, after `rows`, `runs`, `shift`
+  and `flip` and before variant swaps. A derived frame edits its parent's
+  interior, never its parent's outline.
+- The outline rule is then checked as usual. The one fault an auto sprite can
+  have is an interior pixel on the canvas edge, where the outline has no room
+  (4.6). With `grounded`, the interior stops one row above the bottom and the
+  outline supplies the bottom row.
+
+**Reference sprites.** `build = false` at top level (default `true`; another
+type is E001) keeps a sprite and its variants out of every export. It is
+still parsed, checked, counted by `check`, drawn by `preview` and shown on the
+contact sheet, and a fault in it fails `check` and so `build`. Its id is still
+its file stem and must be unique, so a reference copy of a sprite the game
+also has needs its own name, such as `sample_warrior.sprite.toml`.
+
 ### 4.5 Commands
 
 All commands share: `--project <dir>`, exit code `0` success, `1` check
@@ -317,8 +375,8 @@ failures, `2` usage or config error.
 | `sprite guide` | Print the format reference, palette legend (key, hex, name) and canvas classes with their rules. | The guide |
 | `sprite new <id> --canvas <class> [--dir <subdir>]` | Write a sprite file with one all-transparent frame named `main`. Refuses to overwrite. | The path |
 | `sprite check [paths...]` | Check all sprite files, or only the given files. `.png` paths are checked as images and need `--canvas <class>`. | `ok: 12 sprites, 31 frames` |
-| `sprite preview [id...] [--scale N] [--grid] [--on <tile-id>] [--sheet]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
-| `sprite build [--check]` | Run `check` on everything, then write every export target. With `--check`, write nothing and exit 1 if any generated file is missing or differs. | `built: 12 sprites, 31 frames, 3 targets` |
+| `sprite preview [id...] [--scale N\|display] [--grid] [--on <tile-id>] [--sheet]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
+| `sprite build [--check] [--adopt [id...]]` | Run `check` on everything, then write every export target. With `--check`, write nothing and exit 1 if any generated file is missing or differs. `--adopt` is described below. | `built: 12 sprites, 31 frames, 3 targets`, after one `adopted <path>` line per adopted file |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. Refuses to overwrite. | The path |
 
 `sprite --version` prints `sprite <version>`. Games install the tool by git
@@ -326,6 +384,31 @@ tag (`v<version>`), so that everyone working on a game builds the same bytes.
 
 `sprite build` never writes partial output: if `check` fails, no file is
 touched. A blank sprite (W003) is not a failure; it is left out of the build.
+A sprite with `build = false` is left out as well, and out of the counts in
+the `built:` line; files exported for it earlier are removed as stale.
+
+**`build --adopt [id...]`.** An existing file that is not in the manifest
+(4.7) stops the build with exit 2.
+
+| Form | Effect |
+|---|---|
+| no flag | The build stops: `<path> already exists and was not written by sprite-tool (use --adopt <id>... for those sprites, or --adopt for all)`, or `<path> and N more already exist and were not written by sprite-tool (...)` for several. |
+| `--adopt` | Every such file is overwritten and added to the manifest. |
+| `--adopt warrior goblin` | Only files belonging to those ids are taken. Any other unowned file still stops the build, and nothing is written. |
+
+- A file belongs to an id when its name up to the first `.` is the id, or
+  starts with the id followed by `__`: `warrior.png`, `warrior__idle_0.png`,
+  `warrior.tres`. A variant is named separately; `warrior_red.png` belongs to
+  `warrior_red`.
+- Shared files (`atlas.png`, `atlas.json`, `sprites.json`) belong to no id and
+  need the bare flag.
+- Each id must be a sprite in this build, variants included. Otherwise exit
+  2: `error: unknown sprite id 'nosuch' (sprites: goblin, warrior, ...)`.
+  Ids are validated after check failures are reported and before anything is
+  written.
+- After writing, the build prints one `adopted <path>` line per adopted file,
+  before the summary, with the path relative to the current directory.
+- `--check` ignores `--adopt`, ids included.
 
 ### 4.6 Checks (R6)
 
@@ -341,17 +424,17 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 
 | Code | Problem |
 |---|---|
-| E001 | File is not valid TOML, or has an unknown or wrongly typed field. |
+| E001 | File is not valid TOML, or has an unknown or wrongly typed field. Also a frame table with none of `from`, `rows` and `runs`, a malformed run, and `outline = "auto"` on a class with no outline rule. |
 | E002 | Palette invalid: bad key, bad hex value. |
 | E003 | Duplicate sprite id (including variant ids), or an id that exports to the same loose PNG as another sprite's frame. |
 | E101 | Unknown canvas class. |
 | E102 | Wrong row count for the canvas. |
-| E103 | Wrong row width, or trailing whitespace. Reported per row. |
-| E104 | Unknown palette key. Reported per pixel, at most 10 per frame, then a count. |
-| E105 | Bad frame reference in `from` or `anim`, bad `rows` index, or `from` cycle. |
+| E103 | Wrong row width, or trailing whitespace. Reported per row. Also a run whose column is outside the canvas or that passes the right edge: `frame 'main' row 9: run at col 30 is 6 wide, canvas is 32 wide`. |
+| E104 | Unknown palette key. Reported per pixel, at most 10 per frame, then a count. In a run: `unknown palette key 'x' in frame 'main' row 9, col 15`, the column being the one on the canvas. |
+| E105 | Bad frame reference in `from` or `anim`, bad `rows` or `runs` row index, or `from` cycle. |
 | E106 | Frame is fully transparent. |
 | E107 | `swap` names a key not in the palette. |
-| E201 | Outline rule violated at a pixel. At most 10 per frame, then a count. |
+| E201 | Outline rule violated at a pixel. At most 10 per frame, then a count. In a sprite with `outline = "auto"`: `frame 'main': 'b' is on the canvas edge; with outline = "auto" keep the interior 1 pixel inside`. |
 | E202 | Grounded rule violated. |
 | E301 | PNG size does not match the canvas. |
 | E302 | PNG pixel colour not in the palette. Reported as `file.png:x,y`. At most 10 per file, then a count. |
@@ -364,11 +447,19 @@ E106 is for an empty frame in a sprite that has drawn frames. An outline
 fault that a derived frame only carries over from its `from` frame is
 reported once, in the frame it comes from.
 
+A problem in a run is reported at the line of that row's key in the table
+form, or at the line of `runs` in the inline form, column 1. A frame written
+as a table has no file line per pixel row, so a style problem in it is
+reported at the frame's line with `row r, col c` in the message
+(`frame 'main' row 3, col 0: ...`); those are the numbers the author wrote.
+
 **Outline rule** (`outline = ["k", ...]` on a canvas class). Every
 non-transparent pixel that touches a transparent pixel on one of its four
 sides must use one of the listed keys. The area outside the canvas counts as
 transparent. This is checked on the final frame, after derivation and after
 variant swaps (a swap that recolours the outline to a non-listed key fails).
+A sprite with `outline = "auto"` (4.4) is checked the same way, on the frame
+with the outline the tool drew.
 
 **Grounded rule** (`grounded = true`). The bottom row of every frame has at
 least one non-transparent pixel. This keeps all units standing on the same
@@ -379,8 +470,8 @@ other pixel must match a palette colour exactly, including alpha.
 
 ### 4.7 Export targets (R7, R8)
 
-Every target exports all sprites, including variants. Frames are always full
-canvas size.
+Every target exports all sprites, including variants, apart from blank
+sprites and those with `build = false`. Frames are always full canvas size.
 
 **`frames` — loose PNGs.**
 
@@ -388,6 +479,34 @@ canvas size.
   sprite by a stable name whether or not it later gains frames.
 - `<id>__<frame>.png`: every frame, written only when the sprite has more
   than one frame.
+- `<name>.json`: an index of the exported sprites. `name` defaults to
+  `sprites`.
+
+  ```json
+  {
+    "goblin": {
+      "anchor": [16, 32],
+      "bounds": [5, 10, 22, 22],
+      "canvas": "unit",
+      "display_scale": 3,
+      "file": "goblin.png",
+      "frames": {
+        "main": { "bounds": [5, 10, 22, 22], "file": "goblin.png" }
+      },
+      "size": [32, 32]
+    }
+  }
+  ```
+
+  `bounds` is `[x, y, width, height]` in canvas pixels from the top left: the
+  smallest rectangle holding every pixel that is not `.`. A frame's `bounds`
+  covers that frame; the sprite's covers all its frames, so a game placing
+  something above a unit gets one box that does not move with the animation.
+  `file` on the sprite is `<id>.png`; a frame's `file` is `<id>__<frame>.png`
+  when the sprite has more than one frame, else `<id>.png`. A target with no
+  sprites writes `{}`. `build --check` compares the index like any generated
+  file, which is what flags a config change (a new `display_scale`, say) that
+  the exports have not caught up with.
 
 **`phaser` — atlas for Phaser 3/4.**
 
@@ -411,9 +530,12 @@ canvas size.
   animation with the same name, `speed = 1000 / ms`, and `loop` as declared.
   A sprite with no animations gets one animation named `default` holding all
   frames at speed 1.
-- `<name>.json`: a plain index, `{"<id>": {"anchor": [x, y], "size": [w, h], "display_scale": n,
+- `<name>.json`: a plain index, `{"<id>": {"anchor": [x, y], "bounds": [x, y, w, h],
+  "canvas": "<class>", "size": [w, h], "display_scale": n,
   "frames": {"<frame>": [x, y, w, h]}}}`, because `SpriteFrames` cannot carry
-  an anchor.
+  an anchor. `canvas` and `bounds` are as in the `frames` index, `bounds`
+  being the sprite-level box; the `frames` values here are rectangles on the
+  sheet.
 - The tool does not write `.import` files or `uid`s. Godot creates those on
   first import, and they belong to the game repository.
 
@@ -435,7 +557,9 @@ target. On build, files listed in the old manifest and not produced this time
 are deleted. Before writing a file that exists and is not in the manifest, the
 build stops with exit 2 and names the file. This is what happens the first
 time a target points at a directory holding hand-placed PNGs with the same
-names; `sprite build --adopt` takes ownership of those files.
+names; `sprite build --adopt` takes ownership of those files, all of them or
+only those of the sprite ids it is given (4.5). The manifest key of a target
+includes its name, so a `frames` target is listed as `frames:sprites`.
 
 Two targets may share an output directory if they produce no file in common;
 otherwise it is a config error (exit 2). The example config in 4.3 shows
@@ -446,6 +570,18 @@ otherwise it is a config error (exit 2). The example config in 4.3 shows
 - `sprite preview <id>` renders all frames of the sprite left to right,
   nearest-neighbour upscaled by `scale`, on the configured background, with a
   gap between frames. Variants of the sprite follow on further rows.
+- Without `--grid` or `--on`, each row continues, after a gap, with the same
+  frames at the class's `display_scale`, top-aligned: what the game shows,
+  beside the view to draw from. They are left out when the two scales are
+  equal. For `n` frames of width `W`, preview scale `s` and display scale
+  `d ≠ s`, the image is `2·MARGIN + n·W·s + (n−1)·GAP + GAP + n·W·d + (n−1)·GAP`
+  wide. The row is as tall as the taller of the two groups.
+- `--scale` takes a positive integer or the word `display`. `display` draws
+  each sprite at its own class's `display_scale`, so the image holds only the
+  game-size frames and ids of different classes each get their own scale.
+  With `--on` it means a common factor of 1: the pair exactly as the game
+  draws them. `--scale display --grid` is a usage error (exit 2), with or
+  without `--on`; a grid at 2x or 3x cannot be read.
 - `--grid` draws one-pixel lines between art pixels and marks every fourth
   row and column in the margin with its zero-based index, so a viewer can name
   a pixel by `row, col`. Those are the same indices used by `rows` and by
@@ -536,6 +672,7 @@ src/sprite_tool/
   manifest.py               # manifest read/write, stale-file cleanup, ownership check
   guide.py                  # text for `sprite guide`
   export/
+    index.py                # bounds, and the index entry frames and godot share
     frames.py
     phaser.py
     godot.py
@@ -553,7 +690,9 @@ class Color:      key: str; rgba: tuple[int, int, int, int]; name: str | None
 
 @dataclass(frozen=True)
 class Canvas:     name: str; width: int; height: int; anchor: tuple[int, int]
+                  display_scale: int
                   outline: frozenset[str] | None; grounded: bool
+                  outline_key: str | None = None        # first key of the outline list
 
 @dataclass(frozen=True)
 class Frame:      name: str; rows: tuple[str, ...]     # resolved: full grid, keys only
@@ -565,6 +704,8 @@ class Anim:       name: str; frames: tuple[str, ...]; ms: int; loop: bool
 class Sprite:     id: str; source: Path; canvas: Canvas
                   frames: tuple[Frame, ...]; anims: tuple[Anim, ...]
                   outline: bool; grounded: bool          # after per-sprite overrides
+                  auto_outline: bool = False             # the file says outline = "auto"
+                  build: bool = True                     # False: never exported
 
 @dataclass(frozen=True)
 class Problem:    path: Path; line: int; col: int; code: str; message: str
@@ -575,7 +716,13 @@ class Placement:  sprite_id: str; frame: str; x: int; y: int; w: int; h: int
 
 A variant is expanded into an ordinary `Sprite` (with swapped rows and id
 `<sprite>_<variant>`) before checks and export. Nothing downstream knows about
-variants.
+variants. It inherits `auto_outline` and `build` from its sprite.
+
+`Canvas.outline` is a set, so `outline_key` is what keeps the first key of the
+config's list; it is `None` with no rule or an empty list. After parsing,
+`Frame.rows` is always the final grid that is checked, rendered and exported:
+runs are applied and an automatic outline is already drawn in. Nothing
+downstream knows about either, apart from the E201 wording in `check`.
 
 ### 5.4 Pipeline and boundaries
 
