@@ -10,6 +10,10 @@
   game size (requirements R13 to R19, criteria A16 to A27). The sections
   below describe the tool with those changes; the reasons are in that
   document.
+- **Amended:** 2026-10-12, for release 0.4.0, by
+  [text-view-and-runs-discovery.md](text-view-and-runs-discovery.md):
+  `sprite show`, `sprite new --runs`, and a guide whose example draws a whole
+  frame as runs (requirements R20 to R23, criteria A28 to A35).
 - **Status:** Ready for planning. No blocking questions; assumptions and
   non-blocking questions are listed in [section 8](#8-open-questions-and-assumptions).
 
@@ -57,7 +61,7 @@ one-shot generation is still cheaper than the setup.
 | ID | Constraint |
 |---|---|
 | Q1 | **Deterministic output.** The same inputs produce byte-identical PNG, JSON and `.tres` files, so generated files can be committed and diffed. |
-| Q2 | **Token-friendly output.** Success prints one summary line (`init` adds a second, and `build --adopt` one line per adopted file). Each problem is one line. No banners, progress bars or colour codes when stdout is not a terminal. |
+| Q2 | **Token-friendly output.** Success prints one summary line (`init` adds a second, and `build --adopt` one line per adopted file). `guide` and `show` print what was asked for, the guide and the grid blocks, and no summary. Each problem is one line. No banners, progress bars or colour codes when stdout is not a terminal. |
 | Q3 | **Thin.** One runtime dependency (Pillow). No plugin system, no GUI, no drawing primitives. |
 | Q4 | **Safe writes.** The tool only creates, overwrites or deletes files it generated itself (tracked by a manifest per output directory). |
 | Q5 | A full build of 200 sprites completes in under 2 seconds on a laptop. |
@@ -93,7 +97,7 @@ one-shot generation is still cheaper than the setup.
 | A12 | After a sprite is deleted, `sprite build` removes its generated files and leaves unrelated files in the output directory untouched. | Q4 |
 | A14 | A project with a 32x32 `unit` sprite and a 16x16 `tile` sprite builds; both appear in one atlas at their own sizes, and a 16-wide row in the unit sprite is reported as E103. | R2, R8 |
 | A15 | `sprite preview warrior --on ground_light` writes one PNG showing the unit on the tile, each at its class's display scale. | R9 |
-| A13 | `sprite guide` output for the example project is under 80 lines (60 before 0.3.0; A26 in the amending design). | R11, Q2 |
+| A13 | `sprite guide` output for the example project is under 90 lines (60 before 0.3.0, 80 before 0.4.0; A26 and A33 in the amending designs). | R11, Q2 |
 
 ## 3. Current system
 
@@ -373,9 +377,10 @@ failures, `2` usage or config error.
 |---|---|---|
 | `sprite init [dir]` | Write `sprite-tool.toml`, `palette.toml`, one example sprite and a `.gitignore` for `.preview/`. Refuses if `sprite-tool.toml` exists. | `created <dir> (3 files)`, then one line to add to the game's `AGENTS.md`: the install command for this version and the `sprite guide` command |
 | `sprite guide` | Print the format reference, palette legend (key, hex, name) and canvas classes with their rules. | The guide |
-| `sprite new <id> --canvas <class> [--dir <subdir>]` | Write a sprite file with one all-transparent frame named `main`. Refuses to overwrite. | The path |
+| `sprite new <id> --canvas <class> [--dir <subdir>] [--runs]` | Write a sprite file with one all-transparent frame named `main`: a grid of dots, or with `--runs` an empty `[frames.main.runs]` table under a comment giving the form of a run line. Refuses to overwrite. | The path |
 | `sprite check [paths...]` | Check all sprite files, or only the given files. `.png` paths are checked as images and need `--canvas <class>`. | `ok: 12 sprites, 31 frames` |
 | `sprite preview [id...] [--scale N\|display] [--grid] [--on <tile-id>] [--sheet]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
+| `sprite show <id>... [--frame <name>]... [--all]` | Print the resolved grid of each id's default frame as text, with row and column numbers; `--frame` picks frames, `--all` prints every one. Writes no file. Problems are handled as `preview` handles them. | One block per frame, with a blank line between blocks |
 | `sprite build [--check] [--adopt [id...]]` | Run `check` on everything, then write every export target. With `--check`, write nothing and exit 1 if any generated file is missing or differs. `--adopt` is described below. | `built: 12 sprites, 31 frames, 3 targets`, after one `adopted <path>` line per adopted file |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. Refuses to overwrite. | The path |
 
@@ -441,7 +446,7 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 | E401 | `build --check`: generated file missing or stale. |
 | W001 | Two palette keys share one colour. |
 | W002 | Sprite has frames not used by any animation, when it declares at least one animation. |
-| W003 | Sprite is blank: every frame is fully transparent, as `sprite new` writes it. It is left out of the build. |
+| W003 | Sprite is blank: every frame is fully transparent, as `sprite new` writes it, with or without `--runs`. It is left out of the build. |
 
 E106 is for an empty frame in a sprite that has drawn frames. An outline
 fault that a derived frame only carries over from its `from` frame is
@@ -629,8 +634,10 @@ otherwise it is a config error (exit 2). The example config in 4.3 shows
 The intended loop for an agent asked to "add a kobold":
 
 1. `sprite guide` (once per session).
-2. `sprite new kobold --canvas unit --dir units`, then edit the grid.
-3. `sprite check units/kobold.sprite.toml` until clean.
+2. `sprite new kobold --canvas unit --dir units`, then edit the grid; or
+   with `--runs`, then add run lines.
+3. `sprite check units/kobold.sprite.toml` until clean, then
+   `sprite show kobold` to see the shape and count positions.
 4. `sprite preview kobold warrior --grid` and read the PNG to compare against
    an existing sprite. This works before step 3 is clean, as long as the
    grid has the right size and keys.
@@ -668,6 +675,7 @@ src/sprite_tool/
   render.py                 # resolved frame + palette -> RGBA image
   pack.py                   # shelf packer
   preview.py                # sprite preview and contact sheet
+  textview.py               # a frame as text, for `sprite show`
   importer.py               # PNG -> sprite file
   manifest.py               # manifest read/write, stale-file cleanup, ownership check
   guide.py                  # text for `sprite guide`

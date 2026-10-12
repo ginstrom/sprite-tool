@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterable, Sequence
 from importlib import resources
 from pathlib import Path
 
-from . import __version__, check, importer, manifest, render, spritefile
+from . import __version__, check, importer, manifest, render, spritefile, textview
 from . import preview as preview_module
 from . import guide as guide_module
 from . import project as project_module
@@ -143,7 +143,9 @@ def agent_note(root: Path) -> str:
     tag = "" if __version__ == "unknown" else f"@v{__version__}"
     return (
         f"Sprites are made with sprite-tool (`uv tool install git+{REPOSITORY}{tag}`). "
-        f"Run `sprite guide{project}` before drawing or changing one."
+        f"Run `sprite guide{project}` before drawing or changing one. "
+        "Draw with runs (`[frames.main.runs]`, pixels placed by row and column) or a grid, never with a "
+        "script that generates one, and look at the result with `sprite show <id>`."
     )
 
 
@@ -156,6 +158,11 @@ def _guide(args: argparse.Namespace) -> int:
 
 
 _SPRITE_ID_RE = spritefile.ID_RE
+# What `new --runs` writes under the table. An empty table gives nothing to copy.
+_RUNS_COMMENT = """\
+# One line per row that has pixels, rows and columns from 0:
+# <row> = [[<column>, "<pixels>"], ...]
+"""
 
 
 def _new(args: argparse.Namespace) -> int:
@@ -176,8 +183,11 @@ def _new(args: argparse.Namespace) -> int:
         used_by = user.relative_to(project.root).as_posix()
         return _usage_error(f"sprite id {args.id!r} is already used by {used_by}")
 
-    grid = (spritefile.TRANSPARENT * canvas.width + "\n") * canvas.height
-    text = f'canvas = "{canvas.name}"\n\n[frames]\nmain = """\n{grid}"""\n'
+    if args.runs:
+        text = f'canvas = "{canvas.name}"\n\n[frames.main.runs]\n{_RUNS_COMMENT}'
+    else:
+        grid = (spritefile.TRANSPARENT * canvas.width + "\n") * canvas.height
+        text = f'canvas = "{canvas.name}"\n\n[frames]\nmain = """\n{grid}"""\n'
     try:
         directory.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -297,10 +307,17 @@ _MAX_PREVIEW_STEM = 100
 DISPLAY_SCALE = "display"
 
 
-def _preview(args: argparse.Namespace) -> int:
-    if args.scale == DISPLAY_SCALE and args.grid:
-        # A grid at 2x or 3x cannot be read.
-        return _usage_error(f"--scale {DISPLAY_SCALE} cannot be used with --grid")
+def _load_drawable(
+    args: argparse.Namespace, names: Sequence[str], everything: bool = False
+) -> tuple[Project, list[Sprite], dict[str, Sprite]] | int:
+    """Load the project and decide whether the sprites called `names` can be drawn.
+
+    Returns the project, every sprite and the sprites by id, or the exit code
+    when they cannot be drawn. Only problems in the files of `names` count,
+    unless `everything` is set. Style problems are printed and do not stop
+    the caller; any other error does. `preview` and `show` share this, so
+    that they agree on what is fatal.
+    """
     project, sprites, problems = load_checked(args)
     if any(problem.path == project.palette_path and _is_error(problem) for problem in problems):
         report(problems, project.root)
@@ -309,9 +326,8 @@ def _preview(args: argparse.Namespace) -> int:
     by_id = {sprite.id: sprite for sprite in sprites}
     # A file too broken to give a sprite is still a known id: its problems are reported.
     files = {path.name.removesuffix(spritefile.SUFFIX): path for path in spritefile.discover(project.root)}
-    ids = list(dict.fromkeys(args.ids))
     involved = set()
-    for name in [*ids, *([args.on] if args.on else [])]:
+    for name in names:
         if name in by_id:
             involved.add(by_id[name].source)
         elif name in files:
@@ -319,15 +335,27 @@ def _preview(args: argparse.Namespace) -> int:
         else:
             known = ", ".join(sorted(by_id)) or "none"
             return _usage_error(f"unknown sprite id {name!r} (sprites: {known})")
-    sheet = args.sheet or not ids
-    if not sheet:
+    if not everything:
         problems = [problem for problem in problems if problem.path in involved]
     errors = [problem for problem in problems if _is_error(problem)]
     if errors:
-        # Warnings are printed only alongside an error, so a clean run prints paths only.
+        # Warnings are printed only alongside an error, so a clean run prints its product only.
         report(problems, project.root)
         if any(problem.code not in _STYLE_CODES for problem in errors):
             return EXIT_CHECK_FAILED
+    return project, sprites, by_id
+
+
+def _preview(args: argparse.Namespace) -> int:
+    if args.scale == DISPLAY_SCALE and args.grid:
+        # A grid at 2x or 3x cannot be read.
+        return _usage_error(f"--scale {DISPLAY_SCALE} cannot be used with --grid")
+    ids = list(dict.fromkeys(args.ids))
+    sheet = args.sheet or not ids
+    loaded = _load_drawable(args, [*ids, *([args.on] if args.on else [])], everything=sheet)
+    if isinstance(loaded, int):
+        return loaded
+    project, sprites, by_id = loaded
 
     images = {}
     if ids:
@@ -365,6 +393,32 @@ def _preview(args: argparse.Namespace) -> int:
         return _usage_error(f"cannot write preview: {exc}")
     for name in images:
         print(_from_cwd(directory / f"{name}.png", project.root))
+    return EXIT_OK
+
+
+def _show(args: argparse.Namespace) -> int:
+    if args.all and args.frame:
+        return _usage_error("--frame cannot be used with --all")
+    ids = list(dict.fromkeys(args.ids))
+    loaded = _load_drawable(args, ids)
+    if isinstance(loaded, int):
+        return loaded
+    _, _, by_id = loaded
+
+    wanted = list(dict.fromkeys(args.frame or []))
+    blocks = []
+    for name in ids:
+        sprite = by_id[name]
+        frames = {frame.name: frame for frame in sprite.frames}
+        for frame_name in wanted:
+            if frame_name not in frames:
+                return _usage_error(f"sprite {name!r} has no frame {frame_name!r} (frames: {', '.join(frames)})")
+        if args.all:
+            chosen = list(sprite.frames)
+        else:
+            chosen = [frames[frame_name] for frame_name in wanted] or [sprite.frames[0]]
+        blocks += [textview.frame_text(sprite, frame) for frame in chosen]
+    print("\n".join(blocks), end="")
     return EXIT_OK
 
 
@@ -408,6 +462,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "new": _new,
     "check": _check,
     "preview": _preview,
+    "show": _show,
     "build": _build,
     "import": _import,
 }
@@ -431,6 +486,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="sprite",
         description="Turn text sprite definitions into pixel art for Godot 4 and Phaser.",
+        epilog="Run \"sprite guide\" before drawing: it has the file format, this project's palette and the commands.",
     )
     parser.add_argument("--version", action="version", version=f"sprite {__version__}")
     commands = parser.add_subparsers(dest="command", required=True, metavar="<command>")
@@ -447,10 +503,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     commands.add_parser("guide", parents=[in_project], help="print the format reference, palette and canvas classes")
 
-    new = commands.add_parser("new", parents=[in_project], help="write a blank sprite file")
+    new = commands.add_parser("new", parents=[in_project], help="write a blank sprite file, as a grid or with --runs as runs")
     new.add_argument("id", help="sprite id (the file stem)")
     new.add_argument("--canvas", required=True, metavar="<class>", help="canvas class of the sprite")
     new.add_argument("--dir", metavar="<subdir>", help="subdirectory of the project to write into")
+    new.add_argument(
+        "--runs",
+        action="store_true",
+        help="start the file as runs, pixels placed by row and column, not as a grid of dots",
+    )
 
     check = commands.add_parser("check", parents=[in_project], help="check sprite files and PNGs")
     check.add_argument("paths", nargs="*", help="sprite files or PNGs to check (default: every sprite file)")
@@ -473,6 +534,16 @@ def build_parser() -> argparse.ArgumentParser:
     preview.add_argument("--grid", action="store_true", help="draw a pixel grid; writes <ids>.grid.png, not <ids>.plain.png")
     preview.add_argument("--on", metavar="<tile-id>", help="draw each sprite standing on this tile; writes <ids>.on-<tile-id>.png")
     preview.add_argument("--sheet", action="store_true", help="also write the contact sheet, sheet.png")
+
+    show = commands.add_parser("show", parents=[in_project], help="print a sprite's finished grid as text")
+    show.add_argument("ids", nargs="+", metavar="id", help="sprite ids to print, in this order")
+    show.add_argument(
+        "--frame",
+        action="append",
+        metavar="<name>",
+        help="frame to print; may be repeated (default: the default frame)",
+    )
+    show.add_argument("--all", action="store_true", help="print every frame, in file order")
 
     build = commands.add_parser("build", parents=[in_project], help="check everything, then write every export target")
     build.add_argument("--check", action="store_true", help="write nothing; exit 1 if generated files are missing or stale")

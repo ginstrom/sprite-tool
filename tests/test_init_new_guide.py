@@ -109,6 +109,9 @@ def test_init_prints_the_note_for_agents(empty, capsys, argv, command):
     assert lines[1].startswith("for agents, add to AGENTS.md: ")
     assert f"git+https://github.com/ginstrom/sprite-tool@v{__version__}`" in lines[1]
     assert f"`{command}`" in lines[1]
+    assert "Draw with runs (`[frames.main.runs]`, pixels placed by row and column) or a grid" in lines[1]
+    assert "never with a script that generates one" in lines[1]
+    assert "look at the result with `sprite show <id>`." in lines[1]
 
     # The command in the note works from where `init` was run.
     assert main(command.split()[1:]) == 0
@@ -261,6 +264,54 @@ def test_new_dir_is_relative_to_the_project_not_the_current_directory(project, t
     assert capsys.readouterr().out == f"{project / 'rat.sprite.toml'}\n"
 
 
+RUNS_FILE = """\
+canvas = "unit"
+
+[frames.main.runs]
+# One line per row that has pixels, rows and columns from 0:
+# <row> = [[<column>, "<pixels>"], ...]
+"""
+
+
+def test_a34_new_runs_writes_a_runs_table_and_no_grid(project, capsys):
+    assert main(["new", "gem", "--canvas", "unit", "--runs"]) == 0
+    captured = capsys.readouterr()
+    assert (captured.out, captured.err) == ("gem.sprite.toml\n", "")
+    text = (project / "gem.sprite.toml").read_text(encoding="utf-8")
+    assert text == RUNS_FILE
+    assert tomllib.loads(text) == {"canvas": "unit", "frames": {"main": {"runs": {}}}}
+
+
+def test_a34_a_new_runs_sprite_is_blank_until_a_run_is_added(project, capsys):
+    assert main(["new", "gem", "--canvas", "tile", "--runs", "--dir", "tiles"]) == 0
+    path = capsys.readouterr().out.strip()
+    assert path == "tiles/gem.sprite.toml"
+
+    assert main(["check", path]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 2
+    assert lines[0].startswith("tiles/gem.sprite.toml:")
+    assert lines[0].endswith("W003 sprite 'gem' is blank (nothing drawn yet); it is left out of the build")
+    assert lines[1] == "ok: 1 sprite, 1 frame"
+
+    with (project / path).open("a", encoding="utf-8") as sprite:
+        sprite.write('3 = [[2, "wwk"]]\n')
+    assert main(["check", path]) == 0
+    assert capsys.readouterr().out == "ok: 1 sprite, 1 frame\n"
+    assert main(["show", "gem"]) == 0
+    assert " 3  ..wwk...........\n" in capsys.readouterr().out
+
+
+def test_a_new_runs_sprite_does_not_stop_the_build_and_is_not_exported(project, capsys):
+    assert main(["new", "gem", "--canvas", "unit", "--runs"]) == 0
+    capsys.readouterr()
+    assert main(["build"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 2 and "W003" in lines[0]
+    assert lines[1] == "built: 2 sprites, 4 frames, 1 target"
+    assert not list((project / "out").glob("gem*"))
+
+
 NEW_REFUSALS = {
     "existing file": (["warrior", "--canvas", "unit", "--dir", "units"], "units/warrior.sprite.toml already exists"),
     "id used in another directory": (
@@ -292,6 +343,11 @@ def test_new_refusals_exit_2_and_write_nothing(project, capsys, argv, message):
     assert captured.err == f"error: {message}\n"
     assert files(project.parent) == before
 
+    assert main(["new", *argv, "--runs"]) == 2
+    captured = capsys.readouterr()
+    assert (captured.out, captured.err) == ("", f"error: {message}\n")
+    assert files(project.parent) == before
+
 
 def test_new_outside_a_project_exits_2(empty, capsys):
     assert main(["new", "kobold", "--canvas", "unit"]) == 2
@@ -314,7 +370,7 @@ def guide(root: Path, capsys) -> str:
 def test_a13_demo_guide_is_short_and_lists_the_palette_and_canvas_classes(capsys):
     text = guide(DEMO, capsys)
     lines = text.splitlines()
-    assert len(lines) < 80
+    assert len(lines) < 90
     assert max(len(line) for line in lines) <= 100
     assert text.isascii()
 
@@ -385,7 +441,7 @@ def test_guide_example_is_a_valid_sprite_file_for_the_demo(tmp_path, capsys):
     assert EXAMPLE in guide(root, capsys)
 
     assert main(["check", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "ok: 8 sprites, 12 frames\n"
+    assert capsys.readouterr().out == "ok: 8 sprites, 14 frames\n"
 
 
 def test_guide_reflects_the_project(tmp_path, capsys):
@@ -456,9 +512,9 @@ def exports_section(root: Path, capsys) -> list[str]:
     return lines[start:end]
 
 
-def test_a26_demo_guide_states_key_rules_exports_and_removed_keys_in_under_80_lines(capsys):
+def test_a26_demo_guide_states_key_rules_exports_and_removed_keys_in_under_90_lines(capsys):
     lines = guide(DEMO, capsys).splitlines()
-    assert len(lines) < 80
+    assert len(lines) < 90
     text = flat("\n".join(lines))
 
     assert "A key is one printable ASCII character except . \" ' \\ and space" in text
@@ -494,7 +550,7 @@ def test_the_palette_limit_in_the_guide_is_the_number_of_keys_a_palette_accepts(
         "# 2. replace pixels",
         "# 3. move by [dx, dy]",
         "# 4. mirror left to right",
-        "[frames.main.runs]",
+        "[frames.idle_2.runs]",
         "build = false",
         'outline = "auto"',
         "draw the interior only, one pixel inside the canvas edge",
@@ -574,3 +630,42 @@ def test_guide_exports_with_a_long_directory_stay_within_100_columns(tmp_path, c
     assert section[1] == f"frames  {out}"
     assert max(map(len, section)) <= 100
     assert "sprites.json (size, anchor, scale, bounds)" in flat("\n".join(section))
+
+
+# --- guide, 0.4 ---------------------------------------------------------------
+
+
+def test_a33_the_guide_example_has_a_whole_frame_written_as_runs(tmp_path):
+    from sprite_tool.guide import EXAMPLE
+
+    data = tomllib.loads(EXAMPLE)
+    # Runs and nothing else: no `from`, so it starts from a blank canvas.
+    assert list(data["frames"]["idle_2"]) == ["runs"]
+    assert any(line.startswith("[frames.idle_2.runs]") for line in EXAMPLE.splitlines())
+
+    config = MINIMAL_CONFIG.replace("[32, 32]", "[6, 4]").replace("[16, 32]", "[0, 0]")
+    palette = "[colors]\n" + "".join(f'{key} = "#000000"\n' for key in "kwbBrR")
+    root = write_project(tmp_path / "p", config, palette)
+    (root / "gem.sprite.toml").write_text(EXAMPLE, encoding="utf-8")
+    project, _ = load(root)
+    sprites, problems = load_all(project)
+    assert problems == []
+    frames = {frame.name: frame.rows for frame in sprites[0].frames}
+    # The same picture as the grid above it in the example.
+    assert frames["idle_2"] == frames["idle_0"]
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "sprite new <id> --canvas <class> [--dir <subdir>] [--runs]",
+        "--runs starts it as runs, not a grid of dots",
+        "sprite show <id>... [--frame <name>] [--all]",
+        "print the finished grid as text, with row and column numbers; the default frame unless told",
+        "Write a grid when the picture fills the canvas, runs when it is mostly empty or too wide to count across.",
+        "`sprite show <id>` prints either as the finished grid, outline included.",
+        "Do not write a script to generate a grid: placing pixels at a row and column is what runs do.",
+    ],
+)
+def test_a33_a35_guide_names_show_and_runs_and_warns_off_a_generator_script(capsys, phrase):
+    assert phrase in flat(guide(DEMO, capsys))

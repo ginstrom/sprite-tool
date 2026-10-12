@@ -24,8 +24,13 @@ rows = { 1 = "kbbbbk" }    # 1. replace whole rows, by row index
 runs = { 2 = [[2, "ww"]] } # 2. replace pixels: row = [[column, "pixels"], ...]; '.' erases
 shift = [1, 0]             # 3. move by [dx, dy]; pixels pushed off the canvas are lost
 flip = true                # 4. mirror left to right
+[frames.idle_2.runs]       # a whole frame as runs, no grid: one line per row that has pixels
+0 = [[1, "kkkk"]]          #    row = [[column, "pixels"], ...]; the rest stays transparent
+1 = [[0, "kbwwbk"]]
+2 = [[0, "k"], [1, "bBBb"], [5, "k"]]
+3 = [[1, "kkkk"]]
 [anim.idle]                # optional
-frames = ["idle_0", "idle_1"]
+frames = ["idle_0", "idle_1", "idle_2"]
 ms = 400                   # duration of each frame; add `loop = false` to play once
 [variants.red]             # optional: also makes the sprite <id>_red with these keys swapped
 swap = { b = "r", B = "R" }
@@ -38,8 +43,9 @@ columns count from 0 at the top left, in `rows` and in check messages (`row 2, c
 Positions written `file:line:col` count from 1.
 Frame names are free; `<anim>_<n>` is only a habit. A replacement row is a full row. `rows` can
 also be a table, one row per line: `[frames.idle_1.rows]`, then `1 = "kbbbbk"`.
-A whole frame can be runs alone, with no grid: `[frames.main.runs]`, then one line for each row
-that has pixels, such as `9 = [[12, "kwwk"], [20, "k"]]`. The rest stays transparent.
+Write a grid when the picture fills the canvas, runs when it is mostly empty or too wide to count
+across. `sprite show <id>` prints either as the finished grid, outline included.
+Do not write a script to generate a grid: placing pixels at a row and column is what runs do.
 The default frame is what a game shows when no animation plays, and what the contact sheet shows.
 Sprite files may be anywhere in the project; `sprite new` writes to the root unless given `--dir`.
 `build = false` at the top of a file: the sprite is checked and previewed, never exported.
@@ -65,8 +71,12 @@ E104 and build writes nothing until they are fixed.
 
 _COMMANDS = """\
 COMMANDS
-sprite new <id> --canvas <class> [--dir <subdir>]   write a blank sprite file to draw in
+sprite new <id> --canvas <class> [--dir <subdir>] [--runs]
+                                                    write a blank sprite file to draw in; --runs
+                                                    starts it as runs, not a grid of dots
 sprite check [<file>...]                            list problems; fix them until it prints `ok`
+sprite show <id>... [--frame <name>] [--all]        print the finished grid as text, with row and
+                                                    column numbers; the default frame unless told
 sprite preview <id>... [--grid]                     write one image of those sprites and print its
                                                     path; it is drawn even with outline problems;
                                                     --grid labels every 4th row and column

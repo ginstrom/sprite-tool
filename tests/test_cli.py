@@ -8,7 +8,7 @@ from conftest import VALID_CONFIG, write_project
 from sprite_tool import cli
 from sprite_tool.cli import main
 
-SUBCOMMANDS = ["init", "guide", "new", "check", "preview", "build", "import"]
+SUBCOMMANDS = ["init", "guide", "new", "check", "preview", "show", "build", "import"]
 
 def test_help_lists_all_subcommands(capsys):
     with pytest.raises(SystemExit) as excinfo:
@@ -17,6 +17,22 @@ def test_help_lists_all_subcommands(capsys):
     out = capsys.readouterr().out
     for name in SUBCOMMANDS:
         assert name in out
+
+
+def test_a35_help_says_to_read_the_guide_first_and_describes_show_and_runs(capsys):
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert out.endswith(
+        'Run "sprite guide" before drawing: it has the file format, this project\'s palette and the commands.'
+    )
+    assert "write a blank sprite file, as a grid or with --runs as runs" in out
+    assert "print a sprite's finished grid as text" in out
+
+    with pytest.raises(SystemExit):
+        main(["new", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "--runs start the file as runs, pixels placed by row and column, not as a grid of dots" in out
 
 
 def test_version_matches_the_package_metadata(capsys):
@@ -45,6 +61,13 @@ def test_parsed_arguments():
     assert cli.build_parser().parse_args(["build", "--adopt", "a", "b", "--check"]).adopt == ["a", "b"]
     args = cli.build_parser().parse_args(["new", "orc", "--canvas", "unit"])
     assert (args.id, args.canvas, args.dir) == ("orc", "unit", None)
+    assert cli.build_parser().parse_args(["new", "orc", "--canvas", "unit", "--runs"]).runs is True
+    assert args.runs is False
+    args = cli.build_parser().parse_args(["show", "a", "b"])
+    assert (args.ids, args.frame, args.all, args.project) == (["a", "b"], None, False, None)
+    args = cli.build_parser().parse_args(["show", "a", "--frame", "x", "--frame", "y"])
+    assert args.frame == ["x", "y"]
+    assert cli.build_parser().parse_args(["show", "a", "--all"]).all is True
     assert cli.build_parser().parse_args(["init"]).dir == "."
 
 
@@ -60,6 +83,8 @@ USAGE_ERRORS = {
     "scale zero": ["preview", "--scale", "0"],
     "import scale display": ["import", "hero.png", "--canvas", "unit", "--scale", "display"],
     "init takes no project": ["init", "--project", "p"],
+    "show without id": ["show"],
+    "show frame without a name": ["show", "a", "--frame"],
 }
 
 

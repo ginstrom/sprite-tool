@@ -53,22 +53,22 @@ With [uv](https://docs.astral.sh/uv/), which fetches Python 3.11 or later if
 it is missing:
 
 ```sh
-uv tool install git+https://github.com/ginstrom/sprite-tool@v0.3.0
-sprite --version         # sprite 0.3.0
+uv tool install git+https://github.com/ginstrom/sprite-tool@v0.4.0
+sprite --version         # sprite 0.4.0
 ```
 
 Name a tag, as above, so that everyone on a game builds the same files; leave
-`@v0.3.0` off to follow `main`. To move to a newer release, run the command
+`@v0.4.0` off to follow `main`. To move to a newer release, run the command
 again with the new tag and `--force`. The tool is not on PyPI.
 
 Other ways to run it:
 
 ```sh
 # without installing, for example in CI
-uvx --from git+https://github.com/ginstrom/sprite-tool@v0.3.0 sprite build --check
+uvx --from git+https://github.com/ginstrom/sprite-tool@v0.4.0 sprite build --check
 
 # with pipx
-pipx install git+https://github.com/ginstrom/sprite-tool@v0.3.0
+pipx install git+https://github.com/ginstrom/sprite-tool@v0.4.0
 ```
 
 Install it as a tool, as above, and not as a dependency of a Python game. It
@@ -86,8 +86,9 @@ sprite init art          # the art project, in a directory of the game repositor
   an `[[export]]` block to where the game loads its sprites from (see Export
   targets). Commit `art/` and the exported files.
 - **Tell agents.** `sprite init` prints a line to add to the game's
-  `AGENTS.md` or `CLAUDE.md`. It names the install command and
-  `sprite guide`, which is all an agent needs to find its way in.
+  `AGENTS.md` or `CLAUDE.md`. It names the install command,
+  `sprite guide`, which is all an agent needs to find its way in, and how to
+  draw: with runs or a grid, and `sprite show` to see the result.
 - **Give the build a name** in whatever the game already uses, so nobody has
   to remember the tool's name. In a `package.json`:
 
@@ -102,7 +103,7 @@ sprite init art          # the art project, in a directory of the game repositor
 
   ```yaml
   - uses: astral-sh/setup-uv@v6
-  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.3.0 sprite build --check --project art
+  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.4.0 sprite build --check --project art
   ```
 
 ## Quick start
@@ -113,6 +114,7 @@ sprite guide             # the file format, this project's palette and canvas cl
 sprite new archer --canvas unit
 # draw in art/archer.sprite.toml
 sprite check             # list problems; fix them until it prints `ok`
+sprite show archer       # print the finished grid as text, with row and column numbers
 sprite preview archer --grid   # writes art/.preview/archer.grid.png to look at
 sprite build             # check everything, then write the game's files
 ```
@@ -120,7 +122,7 @@ sprite build             # check everything, then write the game's files
 `sprite guide` is the reference for drawing. It prints the sprite file format
 (grids, runs, derived frames, animations, palette-swap variants), the
 project's palette, its canvas classes and what each export target writes, in
-under 80 lines, and it is the only thing an agent needs to read before adding
+under 90 lines, and it is the only thing an agent needs to read before adding
 a sprite.
 
 A project is a directory with `sprite-tool.toml` (canvas classes, preview
@@ -138,30 +140,34 @@ the current directory.
 |---|---|
 | `sprite init [dir]` | Write a starter project, and print the line that tells agents about it. Refuses if its files already exist. |
 | `sprite guide` | Print the format reference, palette and canvas classes. |
-| `sprite new <id> --canvas <class> [--dir <subdir>]` | Write a blank sprite file. |
+| `sprite new <id> --canvas <class> [--dir <subdir>] [--runs]` | Write a blank sprite file: a grid of dots, or with `--runs` a runs table to fill in. |
 | `sprite check [<file>...] [--canvas <class>]` | Check every sprite file, or the given sprite files and PNGs. |
 | `sprite preview [<id>...] [--grid] [--scale N\|display] [--on <tile-id>] [--sheet]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. |
+| `sprite show <id>... [--frame <name>]... [--all]` | Print a sprite's finished grid as text (see below). Writes no file. |
 | `sprite build [--check] [--adopt [<id>...]]` | Check everything, then write every export target. |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. |
 | `sprite --version` | Print the tool's version. |
 
 Output is meant to be cheap to read. Success prints one summary line (`init`
 adds the line for agents, and `build --adopt` one line per file it took
-over). Each
+over). `guide` and `show` print what was asked for and no summary. Each
 problem is one line, `path:line:col: CODE message`. There is no colour and no
 progress output. Exit codes are `0` for success, `1` for check failures and
 `2` for a usage or configuration error (`error: <message>` on stderr).
 
 ### Sprite files
 
-`sprite guide` has the format in full. Three things in it are new in 0.3.0:
+`sprite guide` has the format in full. Three things in it came with 0.3.0:
 
 - **`runs`** in a frame table place pixels by position:
   `runs = { 9 = [[13, "ddsskh"]] }` writes six pixels in row 9 from column
   13, counting from 0. In a frame with `from` they change only those pixels,
   and `.` erases. A frame can also be runs alone, with no grid and no `from`:
   a `[frames.main.runs]` table with one line for each row that has pixels. The
-  rest of the canvas stays transparent.
+  rest of the canvas stays transparent. `sprite new <id> --canvas <class>
+  --runs` starts a file in that form. Runs suit a picture that is mostly
+  empty or too wide to count across; they are also the answer to wanting a
+  script that places pixels at coordinates, which is what a run does.
 - **`outline = "auto"`** at the top of a file: draw the interior only, one
   pixel inside the canvas edge, and the tool draws the outline, with the first
   key in the canvas class's `outline` list. A pixel is outlined from above,
@@ -172,6 +178,35 @@ progress output. Exit codes are `0` for success, `1` for check failures and
   reference copy of `warrior` needs another name, such as
   `sample_warrior.sprite.toml`, and a fault in it fails the build like any
   other.
+
+### The text view
+
+`sprite show` prints what a sprite file resolves to: the pixels `build` would
+export, after `rows`, `runs`, `shift`, `flip`, the automatic outline and
+variant swaps. It needs no image viewer and writes no file.
+
+```
+$ sprite show icon_ring
+icon_ring base  icon 20x20
+              1111111111
+    01234567890123456789
+ 0  ....................
+ 1  ....................
+ 2  ....................
+ 3  ........kkkk........
+ 4  .......kRrrRk.......
+ 5  ......kRroorRk......
+```
+
+(and so on to row 19.) Rows and columns count from 0, the numbers `runs`,
+`rows` and the check messages use. It prints the default frame of each id;
+`--frame <name>`, which may be repeated, picks others, and `--all` prints
+every frame. A variant is shown by its own id (`sprite show warrior_red`).
+Problems are handled as `preview` handles them: style problems are printed
+and the grid still shown, any other error stops it with exit code `1`.
+
+The loop is `check` until it prints `ok`, `show` for the shape and for
+counting positions, `preview` for colour and game size, then `build`.
 
 ### Previews
 
@@ -199,7 +234,8 @@ an unknown palette key) stops the preview with exit code `1`.
 
 ### Sprites that are not drawn yet
 
-A sprite whose frames are all empty, which is what `sprite new` writes, is a
+A sprite whose frames are all empty, which is what `sprite new` writes with
+or without `--runs`, is a
 warning (`W003`) and not an error. `sprite build` leaves it out and builds the
 rest.
 
@@ -367,13 +403,27 @@ pin to `v0.3.0`:
 A sprite file that uses `runs`, `build` or `outline = "auto"` is an error on
 0.2.0, so everyone working on the game needs the new version.
 
+## Upgrading from 0.3.0
+
+Projects load, check and build unchanged, and no generated file changes, so
+`sprite build --check` stays clean. One thing to do once, after moving the pin
+to `v0.4.0`: `sprite init` printed the note for agents when the project was
+made, and the game owns that copy. Add the new sentence to it, in the game's
+`AGENTS.md` or `CLAUDE.md`:
+
+> Draw with runs (`[frames.main.runs]`, pixels placed by row and column) or a
+> grid, never with a script that generates one, and look at the result with
+> `sprite show <id>`.
+
 ## More
 
 - [docs/designs/sprite-tool.md](docs/designs/sprite-tool.md) is the design:
   every check code, the config and file formats in full, and the reasons
   behind them.
   [docs/designs/feedback-fixes.md](docs/designs/feedback-fixes.md) is the
-  design of what 0.3.0 added.
+  design of what 0.3.0 added, and
+  [docs/designs/text-view-and-runs-discovery.md](docs/designs/text-view-and-runs-discovery.md)
+  of what 0.4.0 added.
 - [AGENTS.md](AGENTS.md) covers working on the tool itself.
 
 MIT licence.

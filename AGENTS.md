@@ -9,7 +9,9 @@ Release 0.3 amended both:
 [docs/designs/feedback-fixes.md](docs/designs/feedback-fixes.md) is its design
 and
 [docs/implementation-plans/feedback-fixes/index.md](docs/implementation-plans/feedback-fixes/index.md)
-its plan.
+its plan. Release 0.4 amended the design again:
+[docs/designs/text-view-and-runs-discovery.md](docs/designs/text-view-and-runs-discovery.md)
+(`sprite show`, `new --runs`, and where the guide and help say to use runs).
 
 ## Commands
 
@@ -35,7 +37,8 @@ Everything runs through `uv`.
 - **Output.** Success prints one summary line. Two commands add to it:
   `init` prints a second line, the note for agents (`cli.agent_note`), and
   `build --adopt` prints one `adopted <path>` line per file it took over,
-  before the summary. Each problem is one line on
+  before the summary. `guide` and `show` print their product and no summary:
+  on success `show` prints the grid blocks and nothing else. Each problem is one line on
   stdout. No colour, banners or progress output. Exit codes: `0` success, `1`
   check failures, `2` usage or config error (message on stderr as
   `error: <message>`).
@@ -85,6 +88,8 @@ fails when a fresh build of the demo differs from it by a byte.
   the exit code. Handlers call `load_project(args)` to resolve and load the
   project, or `load_checked(args)` to load and check every sprite as well.
   `report(problems, root)` prints problems and the failure summary.
+  `_load_drawable` is what `preview` and `show` share: which ids are known,
+  and which problems stop a sprite from being drawn.
 - `src/sprite_tool/guide.py`: `guide_text`, the reference that `sprite guide`
   prints. Update it when the sprite file format or a command changes.
 - `src/sprite_tool/templates/`: the files `sprite init` writes. The palette
@@ -114,6 +119,8 @@ fails when a fresh build of the demo differs from it by a byte.
   sprites in one image). Layout sizes are named
   constants, which the tests use. Previews are written straight to
   `.preview/`, not through the manifest.
+- `src/sprite_tool/textview.py`: `frame_text`, the block `sprite show` prints
+  for one frame. It prints `Frame.rows` unchanged and imports no image code.
 - `src/sprite_tool/importer.py`: `import_png` and `to_rows`, a PNG to the grid
   of a sprite file for `sprite import`, and `sprite_text`, the file it writes.
 - `src/sprite_tool/manifest.py`: the only code that creates, overwrites or
