@@ -58,8 +58,30 @@ def test_sprite_entry_has_the_canvas_facts_and_the_box_of_every_frame():
     )
     assert sprite_entry(replace(hero, canvas=canvas)) == {
         "anchor": [2, 3],
+        "anims": {},
         "bounds": [1, 1, 2, 2],
         "canvas": "unit",
         "display_scale": 3,
         "size": [4, 3],
     }
+
+
+def test_sprite_entry_has_the_animations_sorted_by_name_with_each_frames_length():
+    from sprite_tool.model import Anim
+
+    hero = make_sprite("hero", make_frame("a", "k"), make_frame("b", "w"))
+    walk = Anim(name="walk", frames=("a", "b"), ms=100, loop=True)
+    idle = Anim(name="idle", frames=("a", "a", "b"), ms=1000, loop=False, durations=(1000, 1000, 150))
+    entry = sprite_entry(replace(hero, anims=(walk, idle)))
+    assert list(entry["anims"]) == ["idle", "walk"]
+    assert entry["anims"]["idle"] == {
+        "frames": [{"frame": "a", "ms": 1000}, {"frame": "a", "ms": 1000}, {"frame": "b", "ms": 150}],
+        "loop": False,
+    }
+    assert entry["anims"]["walk"]["frames"] == [{"frame": "a", "ms": 100}, {"frame": "b", "ms": 100}]
+
+
+def test_sprite_entry_of_a_layer_says_what_it_is_over():
+    hat = make_sprite("hat", make_frame("a", "k"))
+    assert "over" not in sprite_entry(hat)
+    assert sprite_entry(replace(hat, over="hero"))["over"] == "hero"

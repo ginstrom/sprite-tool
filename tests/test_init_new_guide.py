@@ -370,7 +370,7 @@ def guide(root: Path, capsys) -> str:
 def test_a13_demo_guide_is_short_and_lists_the_palette_and_canvas_classes(capsys):
     text = guide(DEMO, capsys)
     lines = text.splitlines()
-    assert len(lines) < 90
+    assert len(lines) < 110
     assert max(len(line) for line in lines) <= 100
     assert text.isascii()
 
@@ -412,7 +412,7 @@ def test_guide_prints_exactly_guide_text(capsys):
         "sprite new <id> --canvas <class>",
         "sprite check",
         "sprite preview <id>... [--grid]",
-        "sprite preview <id> --on <tile-id>",
+        "sprite preview <id> --on <other-id>",
         "sprite import <png> --canvas <class>",
         "facing right",
         "anchor x,y:",
@@ -505,16 +505,18 @@ def flat(text: str) -> str:
 
 
 def exports_section(root: Path, capsys) -> list[str]:
-    """The lines of the guide's EXPORTS section, heading first."""
+    """The lines of the guide's EXPORTS section, heading first, without the
+    note on selection that closes it."""
     lines = guide(root, capsys).splitlines()
     start = next(index for index, line in enumerate(lines) if line.startswith("EXPORTS"))
     end = lines.index("", start)
-    return lines[start:end]
+    assert lines[end - 2].startswith("A target exports every sprite unless")
+    return lines[start : end - 2]
 
 
-def test_a26_demo_guide_states_key_rules_exports_and_removed_keys_in_under_90_lines(capsys):
+def test_a26_demo_guide_states_key_rules_exports_and_removed_keys_in_under_110_lines(capsys):
     lines = guide(DEMO, capsys).splitlines()
-    assert len(lines) < 90
+    assert len(lines) < 110
     text = flat("\n".join(lines))
 
     assert "A key is one printable ASCII character except . \" ' \\ and space" in text
@@ -525,7 +527,7 @@ def test_a26_demo_guide_states_key_rules_exports_and_removed_keys_in_under_90_li
     assert "EXPORTS  sprite build writes these; do not edit them by hand" in lines
     assert (
         "frames out/frames <id>.png (the default frame), <id>__<frame>.png when a sprite has several"
-        " frames, sprites.json (size, anchor, scale, bounds)"
+        " frames, sprites.json (size, anchor, scale, bounds, animations)"
     ) in text
     assert "phaser out/phaser atlas.png, atlas.json, atlas.anims.json" in text
     assert "godot out/godot atlas.png, atlas.json (the index), one <id>.tres per sprite" in text
@@ -544,12 +546,12 @@ def test_the_palette_limit_in_the_guide_is_the_number_of_keys_a_palette_accepts(
 @pytest.mark.parametrize(
     "phrase",
     [
-        'runs = { 2 = [[2, "ww"]] }',
+        'runs = { 2 = [[2, "B"]] }',
         "optional: the frame to start from",
-        "# 1. replace whole rows",
-        "# 2. replace pixels",
-        "# 3. move by [dx, dy]",
-        "# 4. mirror left to right",
+        "# 2. replace whole rows",
+        "# 3. replace pixels",
+        "# 4. move the whole frame by [dx, dy]",
+        "# 5. mirror left to right",
         "[frames.idle_2.runs]",
         "build = false",
         'outline = "auto"',
@@ -605,7 +607,7 @@ def test_guide_exports_one_frames_target_with_its_index_name_and_a_directory_out
 
     assert section[0] == "EXPORTS  sprite build writes these; do not edit them by hand"
     assert section[1].startswith("frames  ../public/assets/sprites  <id>.png (the default frame), ")
-    assert "units.json (size, anchor, scale, bounds)" in flat("\n".join(section))
+    assert "units.json (size, anchor, scale, bounds, animations)" in flat("\n".join(section))
     assert "sprites.json" not in "\n".join(section)
     assert [line.split()[0] for line in section[1:] if not line.startswith(" ")] == ["frames"]
 
@@ -616,7 +618,7 @@ def test_guide_exports_three_targets_in_config_order_with_their_names(project_di
 
     assert [line.split()[0] for line in section[1:] if not line.startswith(" ")] == ["frames", "phaser", "godot"]
     assert "frames ../assets/frames <id>.png (the default frame)" in text
-    assert "sprites.json (size, anchor, scale, bounds)" in text
+    assert "sprites.json (size, anchor, scale, bounds, animations)" in text
     assert "phaser ../public/assets/sprites atlas.png, atlas.json, atlas.anims.json" in text
     assert "godot out/godot sheet.png, sheet.json (the index), one <id>.tres per sprite" in text
 
@@ -629,7 +631,7 @@ def test_guide_exports_with_a_long_directory_stay_within_100_columns(tmp_path, c
 
     assert section[1] == f"frames  {out}"
     assert max(map(len, section)) <= 100
-    assert "sprites.json (size, anchor, scale, bounds)" in flat("\n".join(section))
+    assert "sprites.json (size, anchor, scale, bounds, animations)" in flat("\n".join(section))
 
 
 # --- guide, 0.4 ---------------------------------------------------------------
@@ -669,3 +671,54 @@ def test_a33_the_guide_example_has_a_whole_frame_written_as_runs(tmp_path):
 )
 def test_a33_a35_guide_names_show_and_runs_and_warns_off_a_generator_script(capsys, phrase):
     assert phrase in flat(guide(DEMO, capsys))
+
+
+# --- guide, 0.5 ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "move = { rows = [1, 1], by = [0, 1] } # 1. move a rectangle (rows, cols or both) by [dx, dy]",
+        "`rows` and `cols` are `[first, last]`",
+        "`check` warns when `move` or `shift` pushes pixels off the canvas",
+        'frames = ["idle_0", { frame = "idle_1", ms = 150 }, "idle_2"] # an entry can give its own length',
+        "ms = 400 # length of every other frame",
+        '`over = "<id>"` at the top of a file: the sprite is a layer, drawn over that sprite',
+        "The outline rule then counts the base's pixels as drawn",
+        "grounded does not apply; previews draw the pair",
+        '`[anim.<name>]` holding only `like = "<id>"` plays as that sprite\'s animation of the same name',
+        '`unoutlined = ["w"]` at the top of a file',
+        '`canvases = ["unit"]` by class, `include = ["gear_*"]` and `exclude = ["sample_*"]` by id pattern',
+        "frames are named <id>/<frame>, animations <id>/<anim>; atlas is the texture key",
+        "sprite preview <id>... --anim <name>",
+        "and a GIF that plays it for each id",
+        "the sprite standing on another sprite, as in the game",
+    ],
+)
+def test_a57_guide_names_what_release_05_added(capsys, phrase):
+    text = guide(DEMO, capsys)
+    assert phrase in flat(text)
+    assert len(text.splitlines()) < 110
+
+
+def test_guide_gives_a_targets_selection_after_its_files(tmp_path, capsys):
+    config = MINIMAL_CONFIG + (
+        '\n[[export]]\ntype = "phaser"\nout = "out"\nname = "units"\n'
+        'canvases = ["unit"]\ninclude = ["gear_*", "warrior"]\nexclude = ["sample_*"]\n'
+        '\n[[export]]\ntype = "frames"\nout = "loose"\nexclude = ["sample_*"]\n'
+    )
+    root = write_project(tmp_path / "p", config)
+    text = flat("\n".join(exports_section(root, capsys)))
+    assert (
+        "units.anims.json; frames are named <id>/<frame>, animations <id>/<anim>; units is the texture key;"
+        " only canvases unit; include gear_*, warrior; exclude sample_*"
+    ) in text
+    assert "sprites.json (size, anchor, scale, bounds, animations); only exclude sample_*" in text
+
+
+def test_guide_names_the_selection_keys_with_no_targets_too(tmp_path, capsys):
+    root = write_project(tmp_path / "p", MINIMAL_CONFIG)
+    text = flat(guide(root, capsys))
+    assert "EXPORTS none configured A target exports every sprite unless its [[export]] table" in text
+    assert "`canvases = [" in text and "`include = [" in text and "`exclude = [" in text

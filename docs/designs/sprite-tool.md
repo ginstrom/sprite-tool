@@ -14,6 +14,11 @@
   [text-view-and-runs-discovery.md](text-view-and-runs-discovery.md):
   `sprite show`, `sprite new --runs`, and a guide whose example draws a whole
   frame as runs (requirements R20 to R23, criteria A28 to A35).
+- **Amended:** 2026-10-12, for release 0.5.0, by
+  [layers-animation-and-export-selection.md](layers-animation-and-export-selection.md):
+  what a target exports, `move`, layers (`over`), frame lengths, `like`,
+  `preview --anim` and `unoutlined` (requirements R24 to R33, criteria A36 to
+  A57).
 - **Status:** Ready for planning. No blocking questions; assumptions and
   non-blocking questions are listed in [section 8](#8-open-questions-and-assumptions).
 
@@ -224,6 +229,8 @@ name = "sprites"         # optional: the index file, sprites.json; this is the d
 type = "phaser"
 out = "../public/assets/sprites"
 name = "atlas"           # atlas.png, atlas.json, atlas.anims.json
+canvases = ["unit"]      # optional: only sprites of these classes
+exclude = ["sample_*"]   # optional: not sprites whose id matches; `include` is its opposite
 
 [[export]]
 type = "godot"
@@ -244,6 +251,21 @@ both cover a 64 px cell.
 All paths are relative to the config file. `[[export]]` may appear any number
 of times, including zero. Unknown keys anywhere in the config are an error
 (this catches typos).
+
+**What a target exports.** Three optional keys on any `[[export]]` table
+select its sprites; a target with none of them exports every sprite (4.7).
+
+| Key | Value | Meaning |
+|---|---|---|
+| `canvases` | list of canvas class names | Only sprites of these classes. |
+| `include` | list of id patterns | Only sprites whose id matches one of them. |
+| `exclude` | list of id patterns | Not sprites whose id matches one of them. |
+
+A pattern is matched against the whole sprite id with `fnmatch.fnmatchcase`
+(`*`, `?`, `[...]`), a variant by its own id. Config errors (exit 2), each
+naming the export by number and the key: a value that is not a list of
+non-empty strings; an empty `canvases` or `include`; a `canvases` entry that
+is not a canvas class. An empty `exclude` is allowed.
 
 ### 4.4 Sprite file (R3, R4, R5)
 
@@ -279,8 +301,8 @@ from = "idle_0"
 rows = { 5 = "....kssssssk...." }     # blink
 
 [anim.idle]
-frames = ["idle_0", "idle_1"]
-ms = 400                 # duration of each frame
+frames = ["idle_0", { frame = "idle_1", ms = 150 }]   # an entry may give its own length
+ms = 400                 # length of a frame that gives none
 loop = true              # default true
 
 [variants.red]
@@ -299,20 +321,28 @@ frame is the sprite's **default frame**. A frame name matches
   and names another frame in the same file to start from; without it the
   frame starts fully transparent. The operations apply in this fixed order:
 
-  1. `rows`: a table from zero-based row index to a full replacement row.
-  2. `runs`: a table from zero-based row index to a list of runs. A run is
+  1. `move`: one move or a list of moves, applied in order. A move is a
+     table with `by = [dx, dy]` and `rows`, `cols` or both, each an inclusive
+     `[first, last]` range that defaults to the whole canvas. It takes that
+     rectangle, makes it transparent, and writes it back `dx` to the right
+     and `dy` down, transparent cells included, so it replaces what was at
+     its destination. Cells that land outside the canvas are dropped. It
+     comes first so that `rows` and `runs` can touch up what it leaves.
+  2. `rows`: a table from zero-based row index to a full replacement row.
+  3. `runs`: a table from zero-based row index to a list of runs. A run is
      `[column, "pixels"]`: a zero-based column and one or more characters,
      each a palette key or `.`. It replaces exactly those pixels; `.` writes
      transparency, which is how a derived frame erases. Runs in a row apply
      in list order, so a later run wins an overlap. An empty list writes
      nothing.
-  3. `shift = [dx, dy]`: move all pixels; pixels moved off the canvas are
+  4. `shift = [dx, dy]`: move all pixels; pixels moved off the canvas are
      dropped and vacated pixels are transparent.
-  4. `flip = true`: mirror horizontally.
+  5. `flip = true`: mirror horizontally.
 
   `from` may point at another frame table. A cycle is an error. A table with
-  none of `from`, `rows` and `runs` is E001 (`frame 'x': needs from, rows or
-  runs`).
+  none of `from`, `rows`, `runs` and `move` is E001 (`frame 'x': needs from,
+  rows, runs or move`). A `shift` or `move` that pushes drawn pixels off the
+  canvas is W006, naming the frame and the count.
 
   ```toml
   [frames.idle_1]
@@ -329,7 +359,33 @@ frame is the sprite's **default frame**. A frame name matches
 
 **Animations.** `[anim.<name>]` lists frame names and a per-frame duration in
 milliseconds. Animations are optional; a sprite with none is a set of still
-frames.
+frames. An entry of `frames` is a frame name, or a table
+`{ frame = "<name>", ms = <positive integer> }` with a length of its own;
+`ms` on the animation stays required and is the length of every entry
+written as a name.
+
+An animation table holding only `like = "<sprite id>"` takes the animation
+of the same name from that sprite: its entries, its `ms` and its `loop`. The
+frames it names must exist in this sprite, and the animation it points at
+must be written out (it is resolved one step). Failures are E105; `like`
+beside another field is E001.
+
+**Layers.** `over = "<sprite id>"` at top level names the sprite this one is
+drawn over, its **base**, which makes this sprite a **layer**. A frame of the
+layer is paired with the base's frame of the same name, else with the base's
+default frame. The outline rule is checked on the pair and the grounded rule
+does not apply (4.6); every preview draws the pair (4.8); the exports are the
+layer's own pixels, and the indexes say what it is over (4.7). The base must
+be a sprite of the same canvas class that is not itself a layer (E108). A
+variant of a layer is a layer over the same base. `outline = "auto"` cannot
+be used with `over` (E001).
+
+**Keys that take no outline.** `unoutlined = ["w"]` at top level lists
+palette keys (E001 if it is not a list of one-character strings, E107 for a
+key not in the palette). A pixel of a listed key is never an outline fault,
+and `outline = "auto"` draws no outline around it; to its neighbours it is a
+drawn pixel like any other. A variant's list is its sprite's with the swap
+applied.
 
 **Variants.** `[variants.<name>]` with `swap` (a table from palette key to
 palette key) renders an extra sprite with id `<sprite>_<variant>`, with the
@@ -353,8 +409,8 @@ interior only and the tool draws the outline:
   grow no further outline. Diagonals do not count, so corners come out
   rounded. A transparent hole inside the shape is outlined as well, and a
   one-pixel hole fills completely.
-- It runs once per frame on the final interior, after `rows`, `runs`, `shift`
-  and `flip` and before variant swaps. A derived frame edits its parent's
+- It runs once per frame on the final interior, after `move`, `rows`, `runs`,
+  `shift` and `flip` and before variant swaps. A derived frame edits its parent's
   interior, never its parent's outline.
 - The outline rule is then checked as usual. The one fault an auto sprite can
   have is an interior pixel on the canvas edge, where the outline has no room
@@ -379,7 +435,7 @@ failures, `2` usage or config error.
 | `sprite guide` | Print the format reference, palette legend (key, hex, name) and canvas classes with their rules. | The guide |
 | `sprite new <id> --canvas <class> [--dir <subdir>] [--runs]` | Write a sprite file with one all-transparent frame named `main`: a grid of dots, or with `--runs` an empty `[frames.main.runs]` table under a comment giving the form of a run line. Refuses to overwrite. | The path |
 | `sprite check [paths...]` | Check all sprite files, or only the given files. `.png` paths are checked as images and need `--canvas <class>`. | `ok: 12 sprites, 31 frames` |
-| `sprite preview [id...] [--scale N\|display] [--grid] [--on <tile-id>] [--sheet]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
+| `sprite preview [id...] [--scale N\|display] [--grid] [--on <tile-id>] [--sheet] [--anim <name>]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
 | `sprite show <id>... [--frame <name>]... [--all]` | Print the resolved grid of each id's default frame as text, with row and column numbers; `--frame` picks frames, `--all` prints every one. Writes no file. Problems are handled as `preview` handles them. | One block per frame, with a blank line between blocks |
 | `sprite build [--check] [--adopt [id...]]` | Run `check` on everything, then write every export target. With `--check`, write nothing and exit 1 if any generated file is missing or differs. `--adopt` is described below. | `built: 12 sprites, 31 frames, 3 targets`, after one `adopted <path>` line per adopted file |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. Refuses to overwrite. | The path |
@@ -429,16 +485,17 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 
 | Code | Problem |
 |---|---|
-| E001 | File is not valid TOML, or has an unknown or wrongly typed field. Also a frame table with none of `from`, `rows` and `runs`, a malformed run, and `outline = "auto"` on a class with no outline rule. |
+| E001 | File is not valid TOML, or has an unknown or wrongly typed field. Also a frame table with none of `from`, `rows`, `runs` and `move`, a malformed run, move or animation entry, `like` beside another field, and `outline = "auto"` on a class with no outline rule or with `over`. |
 | E002 | Palette invalid: bad key, bad hex value. |
 | E003 | Duplicate sprite id (including variant ids), or an id that exports to the same loose PNG as another sprite's frame. |
 | E101 | Unknown canvas class. |
 | E102 | Wrong row count for the canvas. |
 | E103 | Wrong row width, or trailing whitespace. Reported per row. Also a run whose column is outside the canvas or that passes the right edge: `frame 'main' row 9: run at col 30 is 6 wide, canvas is 32 wide`. |
 | E104 | Unknown palette key. Reported per pixel, at most 10 per frame, then a count. In a run: `unknown palette key 'x' in frame 'main' row 9, col 15`, the column being the one on the canvas. |
-| E105 | Bad frame reference in `from` or `anim`, bad `rows` or `runs` row index, or `from` cycle. |
+| E105 | Bad frame reference in `from` or `anim`, bad `rows` or `runs` row index, a `move` range outside the canvas or with its first index above its last, a `like` that cannot be taken, or `from` cycle. |
 | E106 | Frame is fully transparent. |
-| E107 | `swap` names a key not in the palette. |
+| E107 | `swap` or `unoutlined` names a key not in the palette. |
+| E108 | `over` names an unknown sprite, the sprite itself, a layer, or a sprite of another canvas class. |
 | E201 | Outline rule violated at a pixel. At most 10 per frame, then a count. In a sprite with `outline = "auto"`: `frame 'main': 'b' is on the canvas edge; with outline = "auto" keep the interior 1 pixel inside`. |
 | E202 | Grounded rule violated. |
 | E301 | PNG size does not match the canvas. |
@@ -447,6 +504,10 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 | W001 | Two palette keys share one colour. |
 | W002 | Sprite has frames not used by any animation, when it declares at least one animation. |
 | W003 | Sprite is blank: every frame is fully transparent, as `sprite new` writes it, with or without `--runs`. It is left out of the build. |
+| W004 | An `include` or `exclude` pattern of an export matches no sprite. Reported at `sprite-tool.toml`. |
+| W005 | A sprite that would be built is selected by no export target. Given only when the project has a target. |
+| W006 | A `shift` or `move` pushes drawn pixels off the canvas: `frame 'idle_1': shift [0, 1] pushes 7 drawn pixels off the canvas`. Once for a sprite, not again for its variants. |
+| W007 | An animation of a layer differs from its base's animation of the same name in frame count or lengths. |
 
 E106 is for an empty frame in a sprite that has drawn frames. An outline
 fault that a derived frame only carries over from its `from` frame is
@@ -464,11 +525,16 @@ sides must use one of the listed keys. The area outside the canvas counts as
 transparent. This is checked on the final frame, after derivation and after
 variant swaps (a swap that recolours the outline to a non-listed key fails).
 A sprite with `outline = "auto"` (4.4) is checked the same way, on the frame
-with the outline the tool drew.
+with the outline the tool drew. A pixel whose key the sprite lists as
+`unoutlined` is never at fault. For a layer the rule is checked on the pair:
+a pixel of the layer is at fault when a neighbour is outside the canvas, or
+transparent in the layer and in the paired base frame; the message then says
+`touches transparency over '<base>'`. A layer whose `over` is bad (E108) is
+checked as a plain sprite.
 
 **Grounded rule** (`grounded = true`). The bottom row of every frame has at
 least one non-transparent pixel. This keeps all units standing on the same
-baseline.
+baseline. It does not apply to a layer, which stands on its base.
 
 **PNG checks.** A pixel with alpha 0 is transparent whatever its RGB. Any
 other pixel must match a palette colour exactly, including alpha.
@@ -476,7 +542,11 @@ other pixel must match a palette colour exactly, including alpha.
 ### 4.7 Export targets (R7, R8)
 
 Every target exports all sprites, including variants, apart from blank
-sprites and those with `build = false`. Frames are always full canvas size.
+sprites and those with `build = false`, unless its `canvases`, `include` or
+`exclude` (4.3) select fewer. A sprite a target no longer selects has its
+files removed from that target's directory by the next build, through the
+manifest. The `built:` line counts the sprites and frames that at least one
+target exports. Frames are always full canvas size.
 
 **`frames` — loose PNGs.**
 
@@ -491,6 +561,7 @@ sprites and those with `build = false`. Frames are always full canvas size.
   {
     "goblin": {
       "anchor": [16, 32],
+      "anims": {},
       "bounds": [5, 10, 22, 22],
       "canvas": "unit",
       "display_scale": 3,
@@ -508,8 +579,11 @@ sprites and those with `build = false`. Frames are always full canvas size.
   covers that frame; the sprite's covers all its frames, so a game placing
   something above a unit gets one box that does not move with the animation.
   `file` on the sprite is `<id>.png`; a frame's `file` is `<id>__<frame>.png`
-  when the sprite has more than one frame, else `<id>.png`. A target with no
-  sprites writes `{}`. `build --check` compares the index like any generated
+  when the sprite has more than one frame, else `<id>.png`. `anims` has each
+  animation by name, sorted, as
+  `{"frames": [{"frame": "<name>", "ms": n}, ...], "loop": bool}`; it is `{}`
+  for a sprite with none. A layer also has `"over": "<base id>"`. A target
+  with no sprites writes `{}`. `build --check` compares the index like any generated
   file, which is what flags a config change (a new `display_scale`, say) that
   the exports have not caught up with.
 
@@ -523,8 +597,8 @@ sprites and those with `build = false`. Frames are always full canvas size.
   No version or timestamp.
 - `<name>.anims.json`: Phaser animation JSON (`{"anims": [...]}`), one entry
   per sprite animation. Animation key is `<id>/<anim>`. Each frame entry has
-  `key` (the atlas name), `frame` and `duration` in ms; `repeat` is `-1` for
-  looping animations and `0` otherwise.
+  `key` (the atlas name), `frame` and `duration` in ms, the frame's own
+  length; `repeat` is `-1` for looping animations and `0` otherwise.
 
 **`godot` — atlas for Godot 4.**
 
@@ -533,13 +607,15 @@ sprites and those with `build = false`. Frames are always full canvas size.
   sheet as `ExtResource` at `<res_path>/<name>.png` and has one `AtlasTexture`
   sub-resource per frame. Each sprite animation becomes a `SpriteFrames`
   animation with the same name, `speed = 1000 / ms`, and `loop` as declared.
+  A frame's `duration` is its length divided by `ms`: `1.0` unless the entry
+  gives its own.
   A sprite with no animations gets one animation named `default` holding all
   frames at speed 1.
 - `<name>.json`: a plain index, `{"<id>": {"anchor": [x, y], "bounds": [x, y, w, h],
   "canvas": "<class>", "size": [w, h], "display_scale": n,
   "frames": {"<frame>": [x, y, w, h]}}}`, because `SpriteFrames` cannot carry
-  an anchor. `canvas` and `bounds` are as in the `frames` index, `bounds`
-  being the sprite-level box; the `frames` values here are rectangles on the
+  an anchor. `canvas`, `bounds`, `anims` and `over` are as in the `frames`
+  index, `bounds` being the sprite-level box; the `frames` values here are rectangles on the
   sheet.
 - The tool does not write `.import` files or `uid`s. Godot creates those on
   first import, and they belong to the game repository.
@@ -609,6 +685,20 @@ otherwise it is a config error (exit 2). The example config in 4.3 shows
 - A sprite with style problems only (E106, E201, E202) is still drawn; the
   problems are printed before the path and the exit code is 0. Seeing the
   sprite is how those problems get fixed. Any other error stops the preview.
+- A layer (4.4) is drawn over its base wherever a preview draws it: each
+  frame over the base's frame of the same name, in every form above. The
+  image sizes do not change. A layer whose `over` is bad is drawn alone.
+- `sprite preview <id>... --anim <name>` writes two things. The strip,
+  `<ids>.anim-<name>.png`, has one tile for each entry of the animation, left
+  to right in play order, a repeated frame drawn again, with the frame's name
+  and its length (`600 ms`) under each; several ids give one image, each
+  id's strip under the one before. The GIF, `<id>.anim-<name>.gif`, one per
+  id, plays the same tiles without labels, looping when the animation loops.
+  GIF counts time in hundredths of a second, so a length is rounded to 10 ms
+  and none is under 20 ms; a tile equal to the one before it is written as
+  more time on that one. `--anim` with `--grid`, `--on`, `--sheet` or no id,
+  and an id without that animation, are usage errors (exit 2). It prints one
+  path per file: the strip, then each GIF.
 - Preview files go to `.preview/` in the project and are not committed.
   Previews are for looking, so they are exempt from Q1.
 
@@ -704,9 +794,13 @@ class Canvas:     name: str; width: int; height: int; anchor: tuple[int, int]
 
 @dataclass(frozen=True)
 class Frame:      name: str; rows: tuple[str, ...]     # resolved: full grid, keys only
+                  origins: ... | None = None           # per pixel, where in the parent frame it came from
+                  lost: tuple[tuple[str, int], ...] = ()   # ("shift [0, 1]", pixels pushed off the canvas)
 
 @dataclass(frozen=True)
 class Anim:       name: str; frames: tuple[str, ...]; ms: int; loop: bool
+                  durations: tuple[int, ...] = ()      # one per entry of frames; empty means ms for each
+                  line: int = 0                        # file line, for W007
 
 @dataclass(frozen=True)
 class Sprite:     id: str; source: Path; canvas: Canvas
@@ -714,6 +808,14 @@ class Sprite:     id: str; source: Path; canvas: Canvas
                   outline: bool; grounded: bool          # after per-sprite overrides
                   auto_outline: bool = False             # the file says outline = "auto"
                   build: bool = True                     # False: never exported
+                  over: str | None = None                # the base of a layer; over_line is its file line
+                  unoutlined: frozenset[str] = frozenset()
+                  anim_likes: tuple[tuple[str, str, int], ...] = ()   # `like`s not resolved
+
+@dataclass(frozen=True)
+class ExportTarget: type: str; out: Path; name: str | None; res_path: str | None; padding: int
+                  canvases: frozenset[str] | None = None; include: tuple[str, ...] | None = None
+                  exclude: tuple[str, ...] = ()
 
 @dataclass(frozen=True)
 class Problem:    path: Path; line: int; col: int; code: str; message: str
@@ -724,7 +826,13 @@ class Placement:  sprite_id: str; frame: str; x: int; y: int; w: int; h: int
 
 A variant is expanded into an ordinary `Sprite` (with swapped rows and id
 `<sprite>_<variant>`) before checks and export. Nothing downstream knows about
-variants. It inherits `auto_outline` and `build` from its sprite.
+variants. It inherits `auto_outline`, `build`, `over` and the resolved
+animations from its sprite.
+
+`Frame.origins` is what lets `check` tell an outline fault a derived frame
+only carries over from one it creates, whatever operations made the frame:
+a fault is inherited when its origin is a fault of the parent. `rows` and
+`runs` leave a pixel's origin as it was.
 
 `Canvas.outline` is a set, so `outline_key` is what keeps the first key of the
 config's list; it is `None` with no rule or an empty list. After parsing,

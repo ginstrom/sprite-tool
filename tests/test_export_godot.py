@@ -256,7 +256,7 @@ def test_index_has_canvas_facts_bounds_and_frames_for_every_sprite(demo, index):
     for sprite in sprites:
         entry = index[sprite.id]
         regions = parse(files[f"{sprite.id}.tres"])["regions"]
-        assert sorted(entry) == ["anchor", "bounds", "canvas", "display_scale", "frames", "size"]
+        assert sorted(entry) == ["anchor", "anims", "bounds", "canvas", "display_scale", "frames", "size"]
         assert entry["canvas"] == sprite.canvas.name
         assert entry["anchor"] == list(sprite.canvas.anchor)
         assert entry["display_scale"] == sprite.canvas.display_scale
@@ -468,3 +468,22 @@ def test_a7_godot_loads_each_resource_as_sprite_frames(tmp_path, capsys):
         f"ANIM warrior_red idle 2 2.5 true {region('warrior_red', 'idle_0')}",
     ]
     assert "ERROR" not in loaded.stdout + loaded.stderr
+
+
+def test_a48_speed_is_from_ms_and_a_frame_of_another_length_has_its_share_as_duration():
+    anim = Anim(name="idle", frames=("a", "b"), ms=500, loop=True, durations=(500, 150))
+    text = export(hero(anim))["hero.tres"].decode("utf-8")
+    assert re.findall(r'"duration": ([0-9.]+)', text) == ["1.0", "0.3"]
+    assert re.findall(r'"speed": ([0-9.]+)', text) == ["2.0"]
+
+
+def test_the_index_has_each_sprites_animations_and_a_layers_base():
+    idle = Anim(name="idle", frames=("a", "b"), ms=500, loop=False, durations=(500, 150))
+    layer = replace(hero(idle, sprite_id="hat"), over="hero")
+    index = json.loads(export(hero(), layer)["atlas.json"])
+    assert index["hat"]["anims"] == {
+        "idle": {"frames": [{"frame": "a", "ms": 500}, {"frame": "b", "ms": 150}], "loop": False}
+    }
+    assert index["hat"]["over"] == "hero"
+    assert index["hero"]["anims"] == {}
+    assert "over" not in index["hero"]

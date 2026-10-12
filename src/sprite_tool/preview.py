@@ -1,5 +1,10 @@
 """Preview images: a sprite's frames upscaled, with an optional pixel grid; a
-sprite standing on a tile; and a contact sheet of every sprite.
+sprite standing on a tile; a contact sheet of every sprite; and an animation
+as a labelled strip and as the frames of a GIF.
+
+A layer (a sprite with `over`) is drawn over its base wherever it is drawn:
+each function takes the base, or `bases`, the base of each layer by the
+layer's id, as `check.bases` gives it.
 
 Previews are for looking at. They are not exports: nothing here is
 byte-stable across Pillow versions, and nothing goes through the manifest.
@@ -7,12 +12,14 @@ byte-stable across Pillow versions, and nothing goes through the manifest.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 from sprite_tool import render
-from sprite_tool.model import Frame, Project, Sprite
+from sprite_tool.check import paired
+from sprite_tool.model import Anim, Frame, Project, Sprite
 
 # Background border around every preview image.
 MARGIN = 8
@@ -34,7 +41,20 @@ _FONT = ImageFont.load_default_imagefont()
 CHAR_WIDTH = 6
 LINE_HEIGHT = 11
 
+# The shortest frame of a GIF that viewers honour, and the unit GIF counts time in.
+GIF_MIN_MS = 20
+GIF_TICK_MS = 10
+
 Colour = tuple[int, int, int, int]
+NO_BASES: Mapping[str, Sprite] = {}
+
+
+def drawn(project: Project, sprite: Sprite, frame: Frame, base: Sprite | None = None) -> Image.Image:
+    """The frame's image; for a layer, over the frame of `base` it is paired with."""
+    art = render.render(frame, project.palette)
+    if base is None:
+        return art
+    return Image.alpha_composite(render.render(paired(base, frame.name), project.palette), art)
 
 
 def sprite_preview(
@@ -44,8 +64,10 @@ def sprite_preview(
     scale: int,
     grid: bool = False,
     display: bool = False,
+    base: Sprite | None = None,
 ) -> Image.Image:
     """Every frame of `sprite` left to right, then one row per variant, by id.
+    A layer and its variants are drawn over `base`.
 
     With `display`, each row's frames follow again at the class's
     `display_scale`, the size the game draws them, top-aligned and without the
@@ -53,10 +75,11 @@ def sprite_preview(
     """
     rows = [sprite, *sorted(variants, key=lambda variant: variant.id)]
     # Each group is every row's tiles at one size; the groups stand side by side.
-    groups = [[[_frame_tile(project, frame, scale, grid) for frame in row.frames] for row in rows]]
+    arts = [[drawn(project, row, frame, base) for frame in row.frames] for row in rows]
+    groups = [[[_frame_tile(project, art, scale, grid) for art in row] for row in arts]]
     game_scale = sprite.canvas.display_scale
     if display and game_scale != scale:
-        groups.append([[_frame_tile(project, frame, game_scale, False) for frame in row.frames] for row in rows])
+        groups.append([[_frame_tile(project, art, game_scale, False) for art in row] for row in arts])
     columns = max(len(row.frames) for row in rows)
     sizes = [group[0][0].size for group in groups]
     row_h = max(tile_h for _, tile_h in sizes)
@@ -95,14 +118,16 @@ def stack(project: Project, images: Iterable[Image.Image]) -> Image.Image:
     return result
 
 
-def on_tile(project: Project, sprite: Sprite, tile: Sprite, scale: int) -> Image.Image:
+def on_tile(
+    project: Project, sprite: Sprite, tile: Sprite, scale: int, bases: Mapping[str, Sprite] = NO_BASES
+) -> Image.Image:
     """The default frame of `sprite` standing on the default frame of `tile`.
 
     Each is enlarged by its class's `display_scale` times `scale`, and the
     sprite's anchor is put on the bottom centre of the tile.
     """
-    ground = _display(project, tile, scale)
-    figure = _display(project, sprite, scale)
+    ground = _display(project, tile, scale, bases.get(tile.id))
+    figure = _display(project, sprite, scale, bases.get(sprite.id))
     factor = sprite.canvas.display_scale * scale
     # Positions with the tile's top left at the origin.
     figure_x = ground.width // 2 - sprite.canvas.anchor[0] * factor
@@ -115,7 +140,9 @@ def on_tile(project: Project, sprite: Sprite, tile: Sprite, scale: int) -> Image
     return image
 
 
-def contact_sheet(project: Project, sprites: Iterable[Sprite]) -> Image.Image:
+def contact_sheet(
+    project: Project, sprites: Iterable[Sprite], bases: Mapping[str, Sprite] = NO_BASES
+) -> Image.Image:
     """Every sprite's default frame at its class's `display_scale`, with its id
     underneath. Classes are in config order, each starting a new row; sprites
     are sorted by id."""
@@ -142,23 +169,88 @@ def contact_sheet(project: Project, sprites: Iterable[Sprite]) -> Image.Image:
     image = Image.new("RGBA", (2 * MARGIN + width, 2 * MARGIN + height), background)
     draw = ImageDraw.Draw(image)
     for sprite, x, cell_y, cell_w in cells:
-        art = _display(project, sprite, 1)
+        art = _display(project, sprite, 1, bases.get(sprite.id))
         image.alpha_composite(art, (x + (cell_w - art.width) // 2, cell_y))
         label_x = x + (cell_w - len(sprite.id) * CHAR_WIDTH) // 2
         draw.text((label_x, cell_y + art.height + LABEL_GAP), sprite.id, font=_FONT, fill=_ink(background))
     return image
 
 
-def _display(project: Project, sprite: Sprite, scale: int) -> Image.Image:
+def anim_frames(
+    project: Project, sprite: Sprite, anim: Anim, base: Sprite | None, scale: int
+) -> list[tuple[Image.Image, int]]:
+    """A tile and its length in ms for each entry of `anim`, in play order.
+
+    A tile is the frame on the preview background, `scale` times larger, a
+    layer's over the frame of `base` with the same name.
+    """
+    frames = {frame.name: frame for frame in sprite.frames}
+    tiles = {
+        name: _frame_tile(project, drawn(project, sprite, frames[name], base), scale, False)
+        for name in dict.fromkeys(anim.frames)
+    }
+    return [(tiles[name], ms) for name, ms in zip(anim.frames, anim.durations)]
+
+
+def anim_strip(project: Project, sprite: Sprite, anim: Anim, base: Sprite | None, scale: int) -> Image.Image:
+    """The tiles of `anim` left to right in play order, each over its frame's
+    name and, on a second line, its length. A cell is as wide as the wider of
+    its tile and its label."""
+    background = project.preview.background
+    cells = []  # tile, label lines, cell width
+    for (tile, ms), name in zip(anim_frames(project, sprite, anim, base, scale), anim.frames):
+        labels = [name, f"{ms} ms"]
+        cells.append((tile, labels, max(tile.width, *(len(label) * CHAR_WIDTH for label in labels))))
+    tile_h = cells[0][0].height
+    width = sum(cell_w for _, _, cell_w in cells) + (len(cells) - 1) * GAP
+    height = tile_h + LABEL_GAP + 2 * LINE_HEIGHT
+    image = Image.new("RGBA", (2 * MARGIN + width, 2 * MARGIN + height), background)
+    draw = ImageDraw.Draw(image)
+    x = MARGIN
+    for tile, labels, cell_w in cells:
+        image.paste(tile, (x + (cell_w - tile.width) // 2, MARGIN))
+        for index, label in enumerate(labels):
+            label_x = x + (cell_w - len(label) * CHAR_WIDTH) // 2
+            label_y = MARGIN + tile_h + LABEL_GAP + index * LINE_HEIGHT
+            draw.text((label_x, label_y), label, font=_FONT, fill=_ink(background))
+        x += cell_w + GAP
+    return image
+
+
+def gif_ms(ms: int) -> int:
+    """A frame length as a GIF can hold it: to the nearest hundredth of a
+    second, and no shorter than viewers honour."""
+    return max(GIF_MIN_MS, (ms + GIF_TICK_MS // 2) // GIF_TICK_MS * GIF_TICK_MS)
+
+
+def save_gif(path: Path, frames: Sequence[tuple[Image.Image, int]], loop: bool) -> None:
+    """Write `frames`, tiles and their lengths in ms, as an animated GIF that
+    loops forever or plays once.
+
+    Pillow writes a tile equal to the one before it as more time on that one,
+    so a repeated frame plays the same and is not a frame of its own.
+    """
+    tiles = [tile.convert("RGB") for tile, _ in frames]
+    options: dict[str, object] = {"loop": 0} if loop else {}
+    tiles[0].save(
+        path,
+        format="GIF",
+        save_all=True,
+        append_images=tiles[1:],
+        duration=[gif_ms(ms) for _, ms in frames],
+        **options,
+    )
+
+
+def _display(project: Project, sprite: Sprite, scale: int, base: Sprite | None = None) -> Image.Image:
     """The sprite's default frame at its class's `display_scale` times `scale`."""
-    art = render.render(sprite.frames[0], project.palette)
+    art = drawn(project, sprite, sprite.frames[0], base)
     return _enlarge(art, sprite.canvas.display_scale * scale)
 
 
-def _frame_tile(project: Project, frame: Frame, scale: int, grid: bool) -> Image.Image:
-    """One frame on the background, `scale` times larger, with the grid if asked."""
+def _frame_tile(project: Project, art: Image.Image, scale: int, grid: bool) -> Image.Image:
+    """One frame's image on the background, `scale` times larger, with the grid if asked."""
     background = project.preview.background
-    art = render.render(frame, project.palette)
     if not grid:
         return _on_background(_enlarge(art, scale), background)
 

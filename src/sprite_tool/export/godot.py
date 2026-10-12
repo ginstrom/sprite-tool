@@ -70,8 +70,11 @@ def _sprite_frames(sprite: Sprite, regions: Mapping[tuple[str, str], Placement],
 
 
 def _animation(sprite: Sprite, anim: Anim) -> str:
+    # `speed` is frames a second at the animation's `ms`; a frame of another
+    # length lasts that many of those.
     frames = ", ".join(
-        f'{{\n"duration": 1.0,\n"texture": SubResource({_quote(_sub_id(sprite, frame))})\n}}' for frame in anim.frames
+        f'{{\n"duration": {ms / anim.ms!r},\n"texture": SubResource({_quote(_sub_id(sprite, frame))})\n}}'
+        for frame, ms in zip(anim.frames, anim.durations)
     )
     return (
         f'{{\n"frames": [{frames}],\n'

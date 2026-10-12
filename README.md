@@ -53,22 +53,22 @@ With [uv](https://docs.astral.sh/uv/), which fetches Python 3.11 or later if
 it is missing:
 
 ```sh
-uv tool install git+https://github.com/ginstrom/sprite-tool@v0.4.0
-sprite --version         # sprite 0.4.0
+uv tool install git+https://github.com/ginstrom/sprite-tool@v0.5.0
+sprite --version         # sprite 0.5.0
 ```
 
 Name a tag, as above, so that everyone on a game builds the same files; leave
-`@v0.4.0` off to follow `main`. To move to a newer release, run the command
+`@v0.5.0` off to follow `main`. To move to a newer release, run the command
 again with the new tag and `--force`. The tool is not on PyPI.
 
 Other ways to run it:
 
 ```sh
 # without installing, for example in CI
-uvx --from git+https://github.com/ginstrom/sprite-tool@v0.4.0 sprite build --check
+uvx --from git+https://github.com/ginstrom/sprite-tool@v0.5.0 sprite build --check
 
 # with pipx
-pipx install git+https://github.com/ginstrom/sprite-tool@v0.4.0
+pipx install git+https://github.com/ginstrom/sprite-tool@v0.5.0
 ```
 
 Install it as a tool, as above, and not as a dependency of a Python game. It
@@ -103,7 +103,7 @@ sprite init art          # the art project, in a directory of the game repositor
 
   ```yaml
   - uses: astral-sh/setup-uv@v6
-  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.4.0 sprite build --check --project art
+  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.5.0 sprite build --check --project art
   ```
 
 ## Quick start
@@ -142,7 +142,7 @@ the current directory.
 | `sprite guide` | Print the format reference, palette and canvas classes. |
 | `sprite new <id> --canvas <class> [--dir <subdir>] [--runs]` | Write a blank sprite file: a grid of dots, or with `--runs` a runs table to fill in. |
 | `sprite check [<file>...] [--canvas <class>]` | Check every sprite file, or the given sprite files and PNGs. |
-| `sprite preview [<id>...] [--grid] [--scale N\|display] [--on <tile-id>] [--sheet]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. |
+| `sprite preview [<id>...] [--grid] [--scale N\|display] [--on <tile-id>] [--sheet] [--anim <name>]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. With `--anim`, an animation as a strip and a GIF. |
 | `sprite show <id>... [--frame <name>]... [--all]` | Print a sprite's finished grid as text (see below). Writes no file. |
 | `sprite build [--check] [--adopt [<id>...]]` | Check everything, then write every export target. |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. |
@@ -179,10 +179,37 @@ progress output. Exit codes are `0` for success, `1` for check failures and
   `sample_warrior.sprite.toml`, and a fault in it fails the build like any
   other.
 
+Release 0.5.0 added these:
+
+- **`move`** in a frame table moves part of a frame:
+  `move = { rows = [0, 27], by = [0, 1] }` takes rows 0 to 27 a pixel down,
+  which is a breath with the feet where they were. A move names `rows`,
+  `cols` or both, each an inclusive `[first, last]`; a list of moves applies
+  in order. It runs before `rows` and `runs`, so they can touch up what it
+  leaves. `check` warns (`W006`) when a `move` or a `shift` pushes drawn
+  pixels off the canvas.
+- **`over = "<id>"`** at the top of a file makes the sprite a layer over
+  another sprite of the same canvas class: gear over a body, say. The outline
+  rule is then checked on the two together, each frame over the base's frame
+  of the same name, so a layer needs an outline only where it sticks out of
+  its base; the grounded rule does not apply to it; and every preview draws
+  it over its base. It is still exported as a sprite of its own, and the game
+  draws the two in the same place.
+- **A frame's own length** in an animation:
+  `frames = ["base", { frame = "glow", ms = 150 }]`. `ms` on the animation is
+  the length of every frame that gives none.
+- **`like = "<id>"`** as the only line of an `[anim.<name>]` table takes the
+  animation of that name from another sprite: frame names, lengths and
+  looping. The frames are this sprite's own. `check` warns (`W007`) when a
+  layer's animation and its base's differ in frame count or lengths.
+- **`unoutlined = ["w"]`** at the top of a file lists palette keys that take
+  no outline, such as smoke: the outline rule passes them and
+  `outline = "auto"` draws none around them.
+
 ### The text view
 
 `sprite show` prints what a sprite file resolves to: the pixels `build` would
-export, after `rows`, `runs`, `shift`, `flip`, the automatic outline and
+export, after `move`, `rows`, `runs`, `shift`, `flip`, the automatic outline and
 variant swaps. It needs no image viewer and writes no file.
 
 ```
@@ -221,11 +248,22 @@ one kind does not overwrite another:
 | `sprite preview archer --on grass` | `archer.on-grass.png` |
 | `sprite preview archer warrior --grid` | `archer+warrior.grid.png` |
 | `sprite preview`, or `--sheet` | `sheet.png` |
+| `sprite preview archer --anim idle` | `archer.anim-idle.png` and `archer.anim-idle.gif` |
 
 `sprite preview archer` draws each frame enlarged by `[preview] scale`, and
 beside them the same frames at the class's `display_scale`, which is the size
 the game shows. `--scale display` draws only the game-size frames, each sprite
 at its own class's scale; it cannot be combined with `--grid`.
+
+`--on` takes any sprite id, not only a tile. A layer (a sprite with `over`)
+is drawn over its base in every preview.
+
+`--anim <name>` writes an animation two ways and prints both paths. The PNG
+is a strip: one tile for each entry of the animation in play order, with the
+frame's name and length under it, which is the form an agent can read. The
+GIF plays it, one file per id, for a person to watch. GIF counts time in
+hundredths of a second, so lengths are rounded to 10 ms and none is under
+20 ms.
 
 A sprite with only style problems (an outline or grounded fault, an empty
 frame) is still drawn: the problems are printed first, then the path, and the
@@ -266,6 +304,25 @@ sheet with 1 pixel of padding (set `padding` to change it). A variant such as
 `warrior_red` is exported as a sprite of its own. A sprite with
 `build = false` is in no target.
 
+A target exports every sprite unless it selects some:
+
+```toml
+[[export]]
+type = "phaser"
+out = "../game/public/sprites"
+name = "atlas"
+canvases = ["unit", "map"]   # only sprites of these canvas classes
+include = ["gear_*", "hero"] # only sprites whose id matches a pattern
+exclude = ["sample_*"]       # not sprites whose id matches a pattern
+```
+
+All three are optional and a sprite must pass each one given. A pattern is
+matched against the whole id, with `*`, `?` and `[...]`; a variant is matched
+by its own id. A sprite a target no longer selects has its files removed from
+that target's directory by the next build. `check` warns of a pattern that
+matches nothing (`W004`) and of a sprite no target exports (`W005`; set
+`build = false` if that is meant).
+
 ### `frames`
 
 Loose PNGs, for any other use: `<id>.png` is the sprite's first frame, and a
@@ -278,6 +335,7 @@ It also writes an index, `sprites.json` (`<name>.json` when the target sets
 {
   "goblin": {
     "anchor": [16, 32],
+    "anims": {},
     "bounds": [4, 3, 26, 29],
     "canvas": "unit",
     "display_scale": 2,
@@ -294,7 +352,10 @@ Each exported sprite, variants included, has its canvas class, `size`,
 `anchor` and `display_scale` from the config, its file names, and `bounds`:
 `[x, y, width, height]` of the drawn pixels on the canvas, from the top left.
 A frame's `bounds` covers that frame and the sprite's covers all its frames,
-so something placed above a unit does not move with its animation. A change
+so something placed above a unit does not move with its animation. `anims`
+has each animation by name, as
+`{"frames": [{"frame": "idle_0", "ms": 400}, ...], "loop": true}`, and a
+layer has `"over": "<base id>"`. A change
 to `display_scale` or `anchor` in the config changes this file, and
 `sprite build --check` reports it until the project is rebuilt.
 
@@ -415,15 +476,33 @@ made, and the game owns that copy. Add the new sentence to it, in the game's
 > grid, never with a script that generates one, and look at the result with
 > `sprite show <id>`.
 
+## Upgrading from 0.4.0
+
+Projects load, check and build unchanged. Two things differ after moving the
+pin to `v0.5.0`:
+
+- Run `sprite build`. The indexes of the `frames` and `godot` targets gain an
+  `anims` key for each sprite, so `sprite build --check` fails until the
+  project is rebuilt and the changed files committed. No image and no atlas
+  file changes.
+- A `shift` that pushes drawn pixels off the canvas now prints a warning
+  (`W006`). It does not fail the build.
+
+A sprite file that uses `move`, `over`, `like`, `unoutlined` or a frame's own
+`ms`, and a config with `canvases`, `include` or `exclude`, is an error on
+0.4.0, so everyone working on the game needs the new version.
+
 ## More
 
 - [docs/designs/sprite-tool.md](docs/designs/sprite-tool.md) is the design:
   every check code, the config and file formats in full, and the reasons
   behind them.
   [docs/designs/feedback-fixes.md](docs/designs/feedback-fixes.md) is the
-  design of what 0.3.0 added, and
+  design of what 0.3.0 added,
   [docs/designs/text-view-and-runs-discovery.md](docs/designs/text-view-and-runs-discovery.md)
-  of what 0.4.0 added.
+  of what 0.4.0 added, and
+  [docs/designs/layers-animation-and-export-selection.md](docs/designs/layers-animation-and-export-selection.md)
+  of what 0.5.0 added.
 - [AGENTS.md](AGENTS.md) covers working on the tool itself.
 
 MIT licence.

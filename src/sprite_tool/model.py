@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -34,8 +34,14 @@ class Frame:
     literal=True: the frame was written as a grid; `line` is the 1-based file
     line of row 0, so row r, column c is at (line + r, c + 1).
     literal=False: derived frame; `line` is the line of its definition, and
-    `parent`, `shift` and `flip` say how it was made from another frame.
+    `parent` is the frame it was made from, if any.
     line=0: position unknown.
+    origins: for a derived frame with a parent, the parent pixel `(row, col)`
+    each pixel of this frame came from; None for a pixel that came from
+    nowhere (vacated by a move or a shift). `rows` and `runs` leave a pixel's
+    origin as it was.
+    lost: for each `shift` or `move` that dropped drawn pixels off the canvas,
+    its description (`"shift [0, 1]"`) and the count.
     """
 
     name: str
@@ -43,16 +49,27 @@ class Frame:
     line: int
     literal: bool
     parent: str | None = None
-    shift: tuple[int, int] = (0, 0)
-    flip: bool = False
+    origins: tuple[tuple[tuple[int, int] | None, ...], ...] | None = None
+    lost: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)
 class Anim:
+    """`durations` has the length in ms of each entry of `frames`; left empty,
+    every entry gets `ms`. `line` is the file line of the animation, 0 when
+    unknown; it is not part of what makes two animations equal.
+    """
+
     name: str
     frames: tuple[str, ...]
     ms: int
     loop: bool
+    durations: tuple[int, ...] = ()
+    line: int = field(default=0, compare=False)
+
+    def __post_init__(self) -> None:
+        if not self.durations:
+            object.__setattr__(self, "durations", (self.ms,) * len(self.frames))
 
 
 @dataclass(frozen=True)
@@ -64,6 +81,11 @@ class Sprite:
     auto_outline: the file says `outline = "auto"`; the frames already hold
     the outline the tool drew.
     build: False for a sprite that is checked and previewed and never exported.
+    over: the id of the sprite this one is drawn over (its base), which makes
+    this sprite a layer; `over_line` is the file line that says so.
+    unoutlined: palette keys that take no outline.
+    anim_likes: animation name, sprite id and file line of each `like` that
+    `spritefile.load_all` has not resolved (yet, or because it failed).
     """
 
     id: str
@@ -76,6 +98,10 @@ class Sprite:
     variant_of: str | None
     auto_outline: bool = False
     build: bool = True
+    over: str | None = None
+    over_line: int = 0
+    unoutlined: frozenset[str] = frozenset()
+    anim_likes: tuple[tuple[str, str, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -103,13 +129,20 @@ class Placement:
 
 @dataclass(frozen=True)
 class ExportTarget:
-    """`out` is absolute, resolved against the config file's directory."""
+    """`out` is absolute, resolved against the config file's directory.
+
+    canvases, include, exclude: which sprites the target exports
+    (`export.select`). None for `canvases` or `include` is no restriction.
+    """
 
     type: str
     out: Path
     name: str | None
     res_path: str | None
     padding: int
+    canvases: frozenset[str] | None = None
+    include: tuple[str, ...] | None = None
+    exclude: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

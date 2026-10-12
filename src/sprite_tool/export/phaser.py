@@ -36,8 +36,8 @@ def export(
     anims = [
         {
             "frames": [
-                {"duration": anim.ms, "frame": _key(sprite.id, frame), "key": target.name}
-                for frame in anim.frames
+                {"duration": ms, "frame": _key(sprite.id, frame), "key": target.name}
+                for frame, ms in zip(anim.frames, anim.durations)
             ],
             "key": _key(sprite.id, anim.name),
             "repeat": -1 if anim.loop else 0,

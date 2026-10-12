@@ -430,7 +430,7 @@ def test_plain_copy_has_the_parent_rows(project):
 )
 def test_shift_moves_pixels_and_drops_those_leaving_the_canvas(project, shift, expected):
     (sprite,), problems = derived(project, f'from = "idle_0"\nshift = {shift}\n')
-    assert problems == []
+    assert [problem.code for problem in problems] in ([], ["W006"])
     assert frame_rows(sprite, "next") == expected
 
 
@@ -442,7 +442,7 @@ def test_flip_mirrors_horizontally(project):
 def test_rows_then_shift_then_flip(project):
     # rows:  k... / rrrr / kbw.    shift [1, 0]:  .k.. / .rrr / .kbw    flip:  ..k. / rrr. / wbk.
     (sprite,), problems = derived(project, 'flip = true\nshift = [1, 0]\nrows = { 1 = "rrrr" }\nfrom = "idle_0"\n')
-    assert problems == []
+    assert [problem.code for problem in problems] == ["W006"]
     assert frame_rows(sprite, "next") == ("..k.", "rrr.", "wbk.")
 
 
@@ -586,7 +586,7 @@ def test_rows_then_runs_then_shift_then_flip(project):
     body = 'flip = true\nshift = [1, 0]\nruns = { 1 = [[1, "bb"]] }\nrows = { 1 = "rrrr" }\nfrom = "idle_0"\n'
     (sprite,), problems = derived(project, body)
 
-    assert problems == []
+    assert [problem.code for problem in problems] == ["W006"]
     assert frame_rows(sprite, "next") == ("..k.", "bbr.", "wbk.")
 
 
@@ -629,14 +629,14 @@ def test_table_with_none_of_from_rows_and_runs_is_e001(project):
     (sprite,), problems = derived(project, "shift = [1, 0]\n")
 
     assert [format_problem(problem, project.root) for problem in problems] == [
-        "hero.sprite.toml:10:1: E001 frame 'next': needs from, rows or runs"
+        "hero.sprite.toml:10:1: E001 frame 'next': needs from, rows, runs or move"
     ]
     assert [frame.name for frame in sprite.frames] == ["idle_0"]
 
 
 def test_frame_of_the_wrong_type_says_what_a_table_needs(project):
     _, problems = load_text(project, TINY + "walk = 3\n")
-    assert problems[0].message == "frame 'walk' must be a grid string or a table with from, rows or runs"
+    assert problems[0].message == "frame 'walk' must be a grid string or a table with from, rows, runs or move"
 
 
 # --- runs problems ----------------------------------------------------------
@@ -947,10 +947,17 @@ def test_variant_name_that_cannot_be_part_of_an_id_is_e001(project):
 def test_derived_frame_records_how_it_was_made(project):
     text = TINY + '[frames.idle_1]\nfrom = "idle_0"\nshift = [1, -1]\nflip = true\n'
     sprites, problems = load_text(project, text)
-    assert problems == []
+    assert [problem.code for problem in problems] == ["W006"]
     literal, derived = sprites[0].frames
-    assert (literal.parent, literal.shift, literal.flip) == (None, (0, 0), False)
-    assert (derived.parent, derived.shift, derived.flip) == ("idle_0", (1, -1), True)
+    assert (literal.parent, literal.origins) == (None, None)
+    assert derived.parent == "idle_0"
+    # Each pixel's place in `idle_0`: one to the left and one below, mirrored.
+    # The column the shift vacated came from nowhere, and so did the bottom row.
+    assert derived.origins == (
+        ((1, 2), (1, 1), (1, 0), None),
+        ((2, 2), (2, 1), (2, 0), None),
+        (None, None, None, None),
+    )
 
 
 # --- automatic outline ----------------------------------------------------

@@ -66,6 +66,7 @@ def test_index_entry_of_a_one_frame_sprite():
     assert index(replace(dot, canvas=canvas)) == {
         "dot": {
             "anchor": [2, 4],
+            "anims": {},
             "bounds": [1, 1, 2, 2],
             "canvas": "unit",
             "display_scale": 3,

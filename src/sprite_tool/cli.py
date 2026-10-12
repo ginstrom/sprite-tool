@@ -14,7 +14,7 @@ from . import __version__, check, importer, manifest, render, spritefile, textvi
 from . import preview as preview_module
 from . import guide as guide_module
 from . import project as project_module
-from .export import EXPORTERS
+from .export import EXPORTERS, select
 from .model import Problem, Project, Sprite, format_problem
 from .project import CONFIG_NAME, ConfigError
 
@@ -266,7 +266,13 @@ def _build(args: argparse.Namespace) -> int:
 
     # A sprite that is still blank has its warning and is not exported; nor is
     # one that says `build = false`.
-    sprites = [sprite for sprite in sprites if sprite.build and not check.is_blank(sprite)]
+    sprites = [sprite for sprite in sprites if check.is_built(sprite)]
+    # Each target exports the sprites it selects. The summary and `--adopt`
+    # go by the sprites that some target exports.
+    selected = [select(sprites, target) for target in project.exports]
+    if project.exports:
+        exported = {sprite.id for chosen in selected for sprite in chosen}
+        sprites = [sprite for sprite in sprites if sprite.id in exported]
     # `--adopt` alone takes every file; with ids, only the files of those sprites.
     adopt_ids = None if args.check or not args.adopt else frozenset(args.adopt)
     if adopt_ids:
@@ -277,7 +283,7 @@ def _build(args: argparse.Namespace) -> int:
     # Nothing is written until every directory has passed its checks.
     images = render.render_all(sprites, project.palette)
     plans = manifest.plan(
-        [(target, EXPORTERS[target.type](sprites, images, target)) for target in project.exports]
+        [(target, EXPORTERS[target.type](chosen, images, target)) for target, chosen in zip(project.exports, selected)]
     )
     if args.check:
         problems += manifest.compare(plans)
@@ -300,8 +306,9 @@ def _build(args: argparse.Namespace) -> int:
 
 PREVIEW_DIR = ".preview"
 # Problems that leave a frame drawable. A preview is still written with these,
-# because seeing the sprite is how they get fixed.
-_STYLE_CODES = frozenset({"E106", "E201", "E202"})
+# because seeing the sprite is how they get fixed. A layer whose `over` is bad
+# (E108) is drawn alone.
+_STYLE_CODES = frozenset({"E106", "E108", "E201", "E202"})
 _MAX_PREVIEW_STEM = 100
 # `--scale display`: each sprite at its class's `display_scale`, the size the game draws it.
 DISPLAY_SCALE = "display"
@@ -351,19 +358,50 @@ def _preview(args: argparse.Namespace) -> int:
         # A grid at 2x or 3x cannot be read.
         return _usage_error(f"--scale {DISPLAY_SCALE} cannot be used with --grid")
     ids = list(dict.fromkeys(args.ids))
+    if args.anim is not None:
+        for flag, given in (("--grid", args.grid), ("--on", args.on), ("--sheet", args.sheet)):
+            if given:
+                return _usage_error(f"--anim cannot be used with {flag}")
+        if not ids:
+            return _usage_error("--anim needs a sprite id")
     sheet = args.sheet or not ids
     loaded = _load_drawable(args, [*ids, *([args.on] if args.on else [])], everything=sheet)
     if isinstance(loaded, int):
         return loaded
     project, sprites, by_id = loaded
+    # A layer is drawn over its base, here as in the game.
+    bases = check.bases(sprites)
 
+    def scale_of(name: str) -> int:
+        if args.scale == DISPLAY_SCALE:
+            return by_id[name].canvas.display_scale
+        return args.scale or project.preview.scale
+
+    stem = "+".join(ids)
+    if len(stem) > _MAX_PREVIEW_STEM:
+        stem = f"{ids[0]}+{len(ids) - 1}more"
     images = {}
-    if ids:
+    # File name to the tiles and lengths of a GIF, and whether it loops.
+    gifs: dict[str, tuple[list, bool]] = {}
+    if args.anim is not None:
+        strips = []
+        for name in ids:
+            sprite = by_id[name]
+            anim = next((anim for anim in sprite.anims if anim.name == args.anim), None)
+            if anim is None:
+                known = ", ".join(sorted(anim.name for anim in sprite.anims)) or "none"
+                return _usage_error(f"sprite {name!r} has no animation {args.anim!r} (animations: {known})")
+            base = bases.get(name)
+            strips.append(preview_module.anim_strip(project, sprite, anim, base, scale_of(name)))
+            frames = preview_module.anim_frames(project, sprite, anim, base, scale_of(name))
+            gifs[f"{name}.anim-{args.anim}.gif"] = (frames, anim.loop)
+        images[f"{stem}.anim-{args.anim}"] = preview_module.stack(project, strips)
+    elif ids:
         if args.on:
             kind = f"on-{args.on}"
             # The game draws the pair with no common factor.
             scale = 1 if args.scale == DISPLAY_SCALE else args.scale or preview_module.ON_TILE_SCALE
-            parts = [preview_module.on_tile(project, by_id[name], by_id[args.on], scale) for name in ids]
+            parts = [preview_module.on_tile(project, by_id[name], by_id[args.on], scale, bases) for name in ids]
         else:
             kind = "grid" if args.grid else "plain"
             parts = [
@@ -371,28 +409,28 @@ def _preview(args: argparse.Namespace) -> int:
                     project,
                     by_id[name],
                     [other for other in sprites if other.variant_of == name],
-                    by_id[name].canvas.display_scale if args.scale == DISPLAY_SCALE else args.scale or project.preview.scale,
+                    scale_of(name),
                     args.grid,
                     display=not args.grid,
+                    base=bases.get(name),
                 )
                 for name in ids
             ]
-        stem = "+".join(ids)
-        if len(stem) > _MAX_PREVIEW_STEM:
-            stem = f"{ids[0]}+{len(ids) - 1}more"
         images[f"{stem}.{kind}"] = preview_module.stack(project, parts)
     if sheet:
-        images["sheet"] = preview_module.contact_sheet(project, sprites)
+        images["sheet"] = preview_module.contact_sheet(project, sprites, bases)
 
     directory = project.root / PREVIEW_DIR
     try:
         directory.mkdir(exist_ok=True)
         for name, image in images.items():
             image.save(directory / f"{name}.png")
+        for name, (frames, loop) in gifs.items():
+            preview_module.save_gif(directory / name, frames, loop)
     except OSError as exc:
         return _usage_error(f"cannot write preview: {exc}")
-    for name in images:
-        print(_from_cwd(directory / f"{name}.png", project.root))
+    for name in [*(f"{name}.png" for name in images), *gifs]:
+        print(_from_cwd(directory / name, project.root))
     return EXIT_OK
 
 
@@ -517,7 +555,7 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("paths", nargs="*", help="sprite files or PNGs to check (default: every sprite file)")
     check.add_argument("--canvas", metavar="<class>", help="canvas class for PNG paths")
 
-    preview = commands.add_parser("preview", parents=[in_project], help="write preview PNGs")
+    preview = commands.add_parser("preview", parents=[in_project], help="write preview PNGs, or an animation as a strip and a GIF")
     preview.add_argument(
         "ids",
         nargs="*",
@@ -532,7 +570,17 @@ def build_parser() -> argparse.ArgumentParser:
         "each sprite at its class's display_scale",
     )
     preview.add_argument("--grid", action="store_true", help="draw a pixel grid; writes <ids>.grid.png, not <ids>.plain.png")
-    preview.add_argument("--on", metavar="<tile-id>", help="draw each sprite standing on this tile; writes <ids>.on-<tile-id>.png")
+    preview.add_argument(
+        "--on",
+        metavar="<tile-id>",
+        help="draw each sprite standing on this sprite, usually a tile; writes <ids>.on-<tile-id>.png",
+    )
+    preview.add_argument(
+        "--anim",
+        metavar="<name>",
+        help="draw this animation: its frames in play order with their lengths as <ids>.anim-<name>.png, "
+        "and an animated <id>.anim-<name>.gif for each id",
+    )
     preview.add_argument("--sheet", action="store_true", help="also write the contact sheet, sheet.png")
 
     show = commands.add_parser("show", parents=[in_project], help="print a sprite's finished grid as text")

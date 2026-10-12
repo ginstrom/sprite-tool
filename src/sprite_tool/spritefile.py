@@ -20,9 +20,10 @@ SUFFIX = ".sprite.toml"
 TRANSPARENT = "."
 MAX_E104_PER_FRAME = 10
 
-_TOP_LEVEL_KEYS = ("canvas", "frames", "anim", "variants", "outline", "grounded", "build")
-_FRAME_KEYS = ("from", "rows", "runs", "shift", "flip")
-_ANIM_KEYS = ("frames", "ms", "loop")
+_TOP_LEVEL_KEYS = ("canvas", "frames", "anim", "variants", "outline", "grounded", "build", "over", "unoutlined")
+_FRAME_KEYS = ("from", "move", "rows", "runs", "shift", "flip")
+_ANIM_KEYS = ("frames", "ms", "loop", "like")
+_MOVE_KEYS = ("rows", "cols", "by")
 _VARIANT_KEYS = ("swap",)
 ID_RE = re.compile(r"[a-z0-9_]+")
 _FRAME_NAME_RE = ID_RE
@@ -40,7 +41,8 @@ def load_all(project: Project, paths: Sequence[Path] | None = None) -> tuple[lis
     """Parse the given sprite files (default: every one in the project).
 
     Returns the sprites sorted by id, variants included, and the problems in
-    file order. Sprites whose ids clash are all returned.
+    file order, those of a `like` after the rest. Sprites whose ids clash are
+    all returned.
     """
     sprites: list[Sprite] = []
     problems: list[Problem] = []
@@ -49,7 +51,57 @@ def load_all(project: Project, paths: Sequence[Path] | None = None) -> tuple[lis
         sprites.extend(found)
         problems.extend(bad)
     sprites.sort(key=lambda sprite: sprite.id)
-    return sprites, problems
+    sprites, bad = _resolve_likes(sprites)
+    return sprites, problems + bad
+
+
+def _resolve_likes(sprites: Sequence[Sprite]) -> tuple[list[Sprite], list[Problem]]:
+    """Give each sprite the animations it takes from another with `like`.
+
+    An animation is looked up by sprite id among the sprites as they were
+    parsed, so it must be written out where it is taken from, and the result
+    does not depend on file order. One that cannot be taken is left out and
+    stays in `anim_likes`. A variant's problems are its sprite's, and are not
+    reported again.
+    """
+    by_id: dict[str, Sprite] = {}
+    for sprite in sprites:
+        by_id.setdefault(sprite.id, sprite)
+    resolved: list[Sprite] = []
+    problems: list[Problem] = []
+    for sprite in sprites:
+        frames = {frame.name for frame in sprite.frames}
+        anims = list(sprite.anims)
+        failed = []
+        for name, source_id, line in sprite.anim_likes:
+            found, messages = _like(name, source_id, by_id, frames)
+            if found is None:
+                failed.append((name, source_id, line))
+                if sprite.variant_of is None:
+                    problems += [Problem(sprite.source, line, 1 if line else 0, "E105", message) for message in messages]
+            else:
+                anims.append(replace(found, line=line))
+        if sprite.anim_likes:
+            sprite = replace(sprite, anims=tuple(anims), anim_likes=tuple(failed))
+        resolved.append(sprite)
+    return resolved, problems
+
+
+def _like(name: str, source_id: str, by_id: dict[str, Sprite], frames: set[str]) -> tuple[Anim | None, list[str]]:
+    """The animation `name` of sprite `source_id`, or why it cannot be taken."""
+    source = by_id.get(source_id)
+    if source is None:
+        return None, [f"anim {name!r}: like names unknown sprite {source_id!r}"]
+    anim = next((anim for anim in source.anims if anim.name == name), None)
+    if anim is None:
+        if any(pending == name for pending, _, _ in source.anim_likes):
+            message = f"anim {name!r}: animation {name!r} of {source_id!r} is itself like; name the sprite that writes it out"
+            return None, [message]
+        return None, [f"anim {name!r}: {source_id!r} has no animation {name!r}"]
+    missing = [frame for frame in dict.fromkeys(anim.frames) if frame not in frames]
+    if missing:
+        return None, [f"anim {name!r} like {source_id!r}: this sprite has no frame {frame!r}" for frame in missing]
+    return anim, []
 
 
 def _load_file(path: Path, project: Project) -> tuple[list[Sprite], list[Problem]]:
@@ -72,9 +124,9 @@ def _load_file(path: Path, project: Project) -> tuple[list[Sprite], list[Problem
     return parser.parse(data), parser.problems
 
 
-def add_outline(rows: tuple[str, ...], key: str) -> tuple[str, ...]:
+def add_outline(rows: tuple[str, ...], key: str, unoutlined: frozenset[str] = frozenset()) -> tuple[str, ...]:
     """`rows` with `key` on every transparent pixel directly above, below,
-    left or right of a drawn one.
+    left or right of a drawn one whose key is not in `unoutlined`.
 
     One pass over the rows as given: the new pixels grow no outline of their
     own, and diagonals do not count, so corners come out rounded.
@@ -83,7 +135,7 @@ def add_outline(rows: tuple[str, ...], key: str) -> tuple[str, ...]:
     width = len(rows[0]) if rows else 0
 
     def drawn(r: int, c: int) -> bool:
-        return 0 <= r < height and 0 <= c < width and rows[r][c] != TRANSPARENT
+        return 0 <= r < height and 0 <= c < width and rows[r][c] != TRANSPARENT and rows[r][c] not in unoutlined
 
     def pixel(r: int, c: int) -> str:
         if rows[r][c] != TRANSPARENT:
@@ -163,6 +215,44 @@ def _is_run(value: Any) -> bool:
     return isinstance(value, list) and len(value) == 2 and _is_int(value[0]) and isinstance(value[1], str)
 
 
+def _is_int_pair(value: Any) -> bool:
+    return isinstance(value, list) and len(value) == 2 and all(_is_int(item) for item in value)
+
+
+@dataclass(frozen=True)
+class _Move:
+    """One `move`: the rectangle of inclusive `rows` and `cols`, and how far it goes."""
+
+    rows: tuple[int, int]
+    cols: tuple[int, int]
+    by: tuple[int, int]
+
+
+# A grid of anything: palette keys when it is a frame's rows, parent positions
+# when it is a frame's origins. The moves below work on either, which is what
+# keeps the two from disagreeing.
+_Grid = list[list[Any]]
+
+
+def _moved(grid: _Grid, move: _Move, blank: Any) -> tuple[_Grid, list[Any]]:
+    """`grid` with the rectangle of `move` cut out and written back at its
+    offset, and the cells that left the canvas."""
+    (top, bottom), (left, right), (dx, dy) = move.rows, move.cols, move.by
+    height, width = len(grid), len(grid[0])
+    result = [list(row) for row in grid]
+    for r in range(top, bottom + 1):
+        for c in range(left, right + 1):
+            result[r][c] = blank
+    dropped = []
+    for r in range(top, bottom + 1):
+        for c in range(left, right + 1):
+            if 0 <= r + dy < height and 0 <= c + dx < width:
+                result[r + dy][c + dx] = grid[r][c]
+            else:
+                dropped.append(grid[r][c])
+    return result, dropped
+
+
 @dataclass(frozen=True)
 class _Derived:
     """A frame table whose own fields are valid; `parent` is not resolved yet.
@@ -171,34 +261,56 @@ class _Derived:
     """
 
     parent: str | None
+    moves: tuple[_Move, ...]
     rows: dict[int, str]
     runs: dict[int, list[tuple[int, str]]]
     shift: tuple[int, int]
     flip: bool
     line: int
 
-    def apply(self, parent_rows: tuple[str, ...], canvas: Canvas) -> tuple[str, ...]:
-        """`rows`, then `runs`, then `shift`, then `flip`."""
-        rows = list(parent_rows)
-        for index, row in self.rows.items():
-            rows[index] = row
-        for index, runs in self.runs.items():
-            for col, text in runs:
-                rows[index] = rows[index][:col] + text + rows[index][col + len(text) :]
+    def apply(
+        self, parent_rows: tuple[str, ...], canvas: Canvas
+    ) -> tuple[tuple[str, ...], tuple[tuple[tuple[int, int] | None, ...], ...], tuple[tuple[str, int], ...]]:
+        """`move`, then `rows`, then `runs`, then `shift`, then `flip`.
 
-        dx, dy = self.shift
-        if (dx, dy) != (0, 0):
-            source = rows
+        Returns the rows, where in the parent each pixel came from, and what
+        each `move` and `shift` pushed off the canvas.
+        """
 
-            def pixel(x: int, y: int) -> str:
-                inside = 0 <= x < canvas.width and 0 <= y < canvas.height
-                return source[y][x] if inside else TRANSPARENT
+        def edit(rows: _Grid) -> None:
+            for index, row in self.rows.items():
+                rows[index] = list(row)
+            for index, runs in self.runs.items():
+                for col, text in runs:
+                    rows[index][col : col + len(text)] = text
 
-            rows = ["".join(pixel(x - dx, y - dy) for x in range(canvas.width)) for y in range(canvas.height)]
+        rows, lost = self._transform([list(row) for row in parent_rows], TRANSPARENT, edit)
+        positions = [[(r, c) for c in range(canvas.width)] for r in range(canvas.height)]
+        origins, _ = self._transform(positions, None, None)
+        return (
+            tuple("".join(row) for row in rows),
+            tuple(tuple(row) for row in origins),
+            tuple((what, count) for what, count in lost if count),
+        )
 
+    def _transform(self, grid: _Grid, blank: Any, edit: Any) -> tuple[_Grid, list[tuple[str, int]]]:
+        """Run the operations on `grid`. `edit` stands for `rows` and `runs`,
+        which change what a cell holds and not where it came from. Also
+        returns, for each move and the shift, how many cells that were not
+        `blank` left the canvas."""
+        lost = []
+        for move in self.moves:
+            grid, dropped = _moved(grid, move, blank)
+            lost.append((f"move by {list(move.by)}", sum(1 for cell in dropped if cell != blank)))
+        if edit is not None:
+            edit(grid)
+        if self.shift != (0, 0):
+            whole = _Move((0, len(grid) - 1), (0, len(grid[0]) - 1), self.shift)
+            grid, dropped = _moved(grid, whole, blank)
+            lost.append((f"shift {list(self.shift)}", sum(1 for cell in dropped if cell != blank)))
         if self.flip:
-            rows = [row[::-1] for row in rows]
-        return tuple(rows)
+            grid = [row[::-1] for row in grid]
+        return grid, lost
 
 
 class _Parser:
@@ -232,20 +344,29 @@ class _Parser:
         canvas = self._canvas(data)
         if canvas is None:
             return []
-        outline, auto_outline = self._outline(data, canvas)
+        over = self._over(data)
+        outline, auto_outline = self._outline(data, canvas, over is not None)
+        unoutlined = self._unoutlined(data)
         grounded = self._flag(data, "grounded")
         build = self._flag(data, "build")
         resolved = self._frames(data.get("frames"), canvas)
-        anims = self._anims(data.get("anim", {}), resolved)
+        anims, likes = self._anims(data.get("anim", {}), resolved)
         swaps = self._variants(data.get("variants", {}))
 
         frames = tuple(frame for frame in resolved.values() if frame is not None)
         if not frames:
             return []
+        for frame in frames:
+            for what, lost in frame.lost:
+                noun = "pixel" if lost == 1 else "pixels"
+                message = f"frame {frame.name!r}: {what} pushes {lost} drawn {noun} off the canvas"
+                self.report_at(frame.line or 1, 1, "W006", message)
         if auto_outline:
             # Only now, on each frame's final interior: any earlier and a
             # derived frame would edit its parent's outline.
-            frames = tuple(replace(frame, rows=add_outline(frame.rows, canvas.outline_key)) for frame in frames)
+            frames = tuple(
+                replace(frame, rows=add_outline(frame.rows, canvas.outline_key, unoutlined)) for frame in frames
+            )
         sprite = Sprite(
             id=self.path.name.removesuffix(SUFFIX),
             source=self.path,
@@ -257,6 +378,10 @@ class _Parser:
             variant_of=None,
             auto_outline=auto_outline,
             build=build,
+            over=over,
+            over_line=self.line("over") if over is not None else 0,
+            unoutlined=unoutlined,
+            anim_likes=likes,
         )
         return [sprite, *(_variant(sprite, name, swap) for name, swap in swaps.items())]
 
@@ -271,7 +396,24 @@ class _Parser:
             self.report("E101", f"unknown canvas class {name!r} (expected one of {expected})", "canvas")
         return canvas
 
-    def _outline(self, data: dict[str, Any], canvas: Canvas) -> tuple[bool, bool]:
+    def _over(self, data: dict[str, Any]) -> str | None:
+        value = data.get("over")
+        if value is not None and not isinstance(value, str):
+            self.report("E001", "over must be a sprite id", "over")
+            return None
+        return value
+
+    def _unoutlined(self, data: dict[str, Any]) -> frozenset[str]:
+        value = data.get("unoutlined", [])
+        if not isinstance(value, list) or not all(isinstance(key, str) and len(key) == 1 for key in value):
+            self.report("E001", "unoutlined must be a list of palette keys", "unoutlined")
+            return frozenset()
+        for key in dict.fromkeys(value):
+            if key not in self.project.palette:
+                self.report("E107", f"unoutlined key {key!r} is not in the palette", "unoutlined")
+        return frozenset(key for key in value if key in self.project.palette)
+
+    def _outline(self, data: dict[str, Any], canvas: Canvas, layer: bool) -> tuple[bool, bool]:
         """Whether the sprite asks for the outline rule, and whether the tool draws the outline.
 
         A value that cannot be used is reported and read as `true`.
@@ -281,6 +423,8 @@ class _Parser:
             return value, False
         if value != "auto":
             self.report("E001", 'outline must be true, false or "auto"', "outline")
+        elif layer:
+            self.report("E001", 'outline = "auto" cannot be used with over; draw the layer\'s outline', "outline")
         elif canvas.outline_key is None:
             self.report("E001", f'outline = "auto" needs an outline rule on canvas class {canvas.name!r}', "outline")
         else:
@@ -314,7 +458,7 @@ class _Parser:
                 if derived is not None:
                     pending[name] = derived
             else:
-                self.report("E001", f"frame {name!r} must be a grid string or a table with from, rows or runs", "frames", name)
+                self.report("E001", f"frame {name!r} must be a grid string or a table with from, rows, runs or move", "frames", name)
         self._resolve(pending, resolved, canvas)
         return resolved
 
@@ -345,8 +489,8 @@ class _Parser:
             if field not in _FRAME_KEYS:
                 self.report("E001", f"frame {name!r}: unknown field {field!r}", *key, field)
 
-        if not any(field in table for field in ("from", "rows", "runs")):
-            self.report("E001", f"frame {name!r}: needs from, rows or runs", *key)
+        if not any(field in table for field in ("from", "rows", "runs", "move")):
+            self.report("E001", f"frame {name!r}: needs from, rows, runs or move", *key)
 
         parent = table.get("from")
         if parent is None:
@@ -355,6 +499,8 @@ class _Parser:
             self.report("E001", f"frame {name!r}: from must be a frame name", *key, "from")
         elif parent not in frames:
             self.report("E105", f"frame {name!r}: from names unknown frame {parent!r}", *key, "from")
+
+        moves = self._moves(name, table.get("move", []), canvas)
 
         # One check for `rows` and `runs`, so that they share the frame's E104 cap.
         check = _RowCheck(self, name, canvas)
@@ -410,7 +556,43 @@ class _Parser:
             return None
         # A frame written only as `[frames.<name>.runs]` has no line of its own.
         line = self.line(*key, "rows") if "rows" in table else self.line(*key) or self.line(*key, "runs")
-        return _Derived(parent=parent, rows=rows, runs=runs, shift=(shift[0], shift[1]), flip=flip, line=line)
+        return _Derived(
+            parent=parent, moves=moves, rows=rows, runs=runs, shift=(shift[0], shift[1]), flip=flip, line=line
+        )
+
+    def _moves(self, name: str, raw: Any, canvas: Canvas) -> tuple[_Move, ...]:
+        """The moves of a frame table, reporting each that cannot be used."""
+        key = ("frames", name, "move")
+        where = f"frame {name!r}: "
+        tables = [raw] if isinstance(raw, dict) else raw
+        if not isinstance(tables, list) or not all(isinstance(table, dict) for table in tables):
+            self.report("E001", where + "move must be a table or a list of tables", *key)
+            return ()
+        moves = []
+        for table in tables:
+            unknown = [field for field in table if field not in _MOVE_KEYS]
+            if unknown:
+                self.report("E001", where + f"move has unknown key {unknown[0]!r}", *key)
+                continue
+            if "rows" not in table and "cols" not in table:
+                self.report("E001", where + "move needs rows or cols (use shift to move the whole frame)", *key)
+                continue
+            if not _is_int_pair(table.get("by")):
+                self.report("E001", where + "move needs by = [dx, dy], two integers", *key)
+                continue
+            ranges = []
+            for field, size in (("rows", canvas.height), ("cols", canvas.width)):
+                value = table.get(field, [0, size - 1])
+                if not _is_int_pair(value):
+                    self.report("E001", where + f"move {field} must be [first, last], two integers", *key)
+                elif not 0 <= value[0] <= value[1] < size:
+                    message = where + f"bad move {field} {value} (expected 0 to {size - 1}, first <= last)"
+                    self.report("E105", message, *key)
+                else:
+                    ranges.append((value[0], value[1]))
+            if len(ranges) == 2:
+                moves.append(_Move(rows=ranges[0], cols=ranges[1], by=tuple(table["by"])))
+        return tuple(moves)
 
     def _resolve(self, pending: dict[str, _Derived], resolved: dict[str, Frame | None], canvas: Canvas) -> None:
         """Fill `resolved` for the derived frames in `pending`, parents first.
@@ -446,41 +628,73 @@ class _Parser:
                     parent = resolved[derived.parent]
                     base = parent.rows if parent is not None else None
                 if base is not None:
-                    rows = derived.apply(base, canvas)
+                    rows, origins, lost = derived.apply(base, canvas)
                     resolved[child] = Frame(
                         name=child,
                         rows=rows,
                         line=derived.line,
                         literal=False,
                         parent=derived.parent,
-                        shift=derived.shift,
-                        flip=derived.flip,
+                        origins=origins if derived.parent is not None else None,
+                        lost=lost,
                     )
                 done.add(child)
 
 
     # --- animations and variants ---
 
-    def _anims(self, raw: Any, frames: dict[str, Frame | None]) -> tuple[Anim, ...]:
+    def _anims(
+        self, raw: Any, frames: dict[str, Frame | None]
+    ) -> tuple[tuple[Anim, ...], tuple[tuple[str, str, int], ...]]:
+        """The animations written out, and name, sprite id and line of each `like`."""
         if not isinstance(raw, dict):
             self.report("E001", "anim must be a table of [anim.<name>] tables", "anim")
-            return ()
+            return (), ()
         anims = []
+        likes = []
         for name, table in raw.items():
             key = ("anim", name)
             if not isinstance(table, dict):
                 self.report("E001", f"anim {name!r} must be a table", *key)
+                continue
+            if "like" in table:
+                if len(table) > 1:
+                    self.report("E001", f"anim {name!r}: like takes no other field", *key, "like")
+                elif not isinstance(table["like"], str):
+                    self.report("E001", f"anim {name!r}: like must be a sprite id", *key, "like")
+                else:
+                    likes.append((name, table["like"], self.line(*key, "like")))
                 continue
             problems_before = len(self.problems)
             for field in table:
                 if field not in _ANIM_KEYS:
                     self.report("E001", f"anim {name!r}: unknown field {field!r}", *key, field)
 
-            names = table.get("frames")
-            if not isinstance(names, list) or not names or not all(isinstance(item, str) for item in names):
+            entries = table.get("frames")
+            if not isinstance(entries, list) or not entries:
                 message = f"anim {name!r}: frames is required and must be a list of frame names"
                 self.report("E001", message, *key, "frames")
-                names = []
+                entries = []
+            # A frame name, and its own length when the entry gives one.
+            parsed: list[tuple[str, int | None]] = []
+            for position, entry in enumerate(entries, start=1):
+                if isinstance(entry, str):
+                    parsed.append((entry, None))
+                elif (
+                    isinstance(entry, dict)
+                    and set(entry) == {"frame", "ms"}
+                    and isinstance(entry["frame"], str)
+                    and _is_int(entry["ms"])
+                    and entry["ms"] >= 1
+                ):
+                    parsed.append((entry["frame"], entry["ms"]))
+                else:
+                    message = (
+                        f"anim {name!r}: frames entry {position} must be a frame name"
+                        ' or { frame = "...", ms = ... }'
+                    )
+                    self.report("E001", message, *key, "frames")
+            names = [frame for frame, _ in parsed]
             for frame in dict.fromkeys(names):
                 if frame not in frames:
                     self.report("E105", f"anim {name!r}: unknown frame {frame!r}", *key, "frames")
@@ -495,8 +709,11 @@ class _Parser:
 
             # A frame that failed has its own problem; the animation just goes.
             if len(self.problems) == problems_before and all(frames[frame] is not None for frame in names):
-                anims.append(Anim(name=name, frames=tuple(names), ms=ms, loop=loop))
-        return tuple(anims)
+                durations = tuple(ms if own is None else own for _, own in parsed)
+                anims.append(
+                    Anim(name=name, frames=tuple(names), ms=ms, loop=loop, durations=durations, line=self.line(*key))
+                )
+        return tuple(anims), tuple(likes)
 
     def _variants(self, raw: Any) -> dict[str, dict[int, str]]:
         """The translation table of each valid variant, by variant name."""
@@ -535,7 +752,8 @@ class _Parser:
 def _variant(base: Sprite, name: str, swap: dict[int, str]) -> Sprite:
     """`base` with every palette key swapped at once."""
     frames = tuple(replace(frame, rows=tuple(row.translate(swap) for row in frame.rows)) for frame in base.frames)
-    return replace(base, id=f"{base.id}_{name}", frames=frames, variant_of=base.id)
+    unoutlined = frozenset(key.translate(swap) for key in base.unoutlined)
+    return replace(base, id=f"{base.id}_{name}", frames=frames, variant_of=base.id, unoutlined=unoutlined)
 
 
 class _RowCheck:

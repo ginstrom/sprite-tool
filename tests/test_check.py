@@ -68,11 +68,12 @@ def run_files(project, files: dict[str, str]):
     """Write the sprite files, load them all and run the checks.
 
     The files must parse cleanly, so every problem returned is from `check`.
+    A shift that loses pixels is the parser's warning and is let through.
     """
     for name, text in files.items():
         write_sprite(project, text, name)
     sprites, problems = load_all(project)
-    assert problems == []
+    assert [problem for problem in problems if problem.code != "W006"] == []
     return check.run(project, sprites)
 
 

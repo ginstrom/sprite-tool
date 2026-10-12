@@ -283,3 +283,9 @@ def test_build_writes_the_phaser_target(tmp_path, capsys):
     assert main(["build", "--project", str(root)]) == 0
     assert {path.name: path.read_bytes() for path in out.iterdir()} == before
 
+
+
+def test_a48_each_frame_has_its_own_duration():
+    anim = Anim(name="idle", frames=("a", "b"), ms=500, loop=True, durations=(500, 150))
+    (exported,) = exported_anims(export(hero(anim)))
+    assert [frame["duration"] for frame in exported["frames"]] == [500, 150]

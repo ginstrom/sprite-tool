@@ -34,12 +34,24 @@ def union(boxes: Iterable[Sequence[int]]) -> list[int]:
 
 def sprite_entry(sprite: Sprite) -> dict[str, object]:
     """The keys every index has for a sprite. `bounds` covers all its frames,
-    so it does not move with the animation."""
+    so it does not move with the animation. `anims` has each frame's own
+    length. `over` is there only for a layer: the id of the sprite it is
+    drawn over."""
     canvas = sprite.canvas
-    return {
+    entry: dict[str, object] = {
         "anchor": list(canvas.anchor),
+        "anims": {
+            anim.name: {
+                "frames": [{"frame": frame, "ms": ms} for frame, ms in zip(anim.frames, anim.durations)],
+                "loop": anim.loop,
+            }
+            for anim in sorted(sprite.anims, key=lambda anim: anim.name)
+        },
         "bounds": union(bounds(frame.rows) for frame in sprite.frames),
         "canvas": canvas.name,
         "display_scale": canvas.display_scale,
         "size": [canvas.width, canvas.height],
     }
+    if sprite.over is not None:
+        entry["over"] = sprite.over
+    return entry

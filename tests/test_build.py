@@ -665,6 +665,7 @@ def test_a21_the_frames_target_writes_an_index_of_sprite_data(demo):
     assert sorted(index) == ["goblin", "ground_light", "slime", "warrior", "warrior_red"]
     assert index["goblin"] == {
         "anchor": [16, 32],
+        "anims": {},
         "bounds": [4, 3, 26, 29],
         "canvas": "unit",
         "display_scale": 2,

@@ -13,25 +13,26 @@ EXAMPLE = '''\
 canvas = "unit"            # a canvas class from the list below
 [frames]                   # the first frame is the default frame; names match [a-z0-9_]+
 idle_0 = """
-.kkkk.
-kbwwbk
-kbBBbk
-.kkkk.
+.kkk..
+kbwbk.
+kbBbk.
+.kkk..
 """
 [frames.idle_1]            # a derived frame; its operations apply in this order:
 from = "idle_0"            #    optional: the frame to start from; without it, a blank canvas
-rows = { 1 = "kbbbbk" }    # 1. replace whole rows, by row index
-runs = { 2 = [[2, "ww"]] } # 2. replace pixels: row = [[column, "pixels"], ...]; '.' erases
-shift = [1, 0]             # 3. move by [dx, dy]; pixels pushed off the canvas are lost
-flip = true                # 4. mirror left to right
+move = { rows = [1, 1], by = [0, 1] } # 1. move a rectangle (rows, cols or both) by [dx, dy]
+rows = { 1 = "kbbbk." }    # 2. replace whole rows, by row index
+runs = { 2 = [[2, "B"]] }  # 3. replace pixels: row = [[column, "pixels"], ...]; '.' erases
+shift = [1, 0]             # 4. move the whole frame by [dx, dy]
+flip = true                # 5. mirror left to right
 [frames.idle_2.runs]       # a whole frame as runs, no grid: one line per row that has pixels
-0 = [[1, "kkkk"]]          #    row = [[column, "pixels"], ...]; the rest stays transparent
-1 = [[0, "kbwwbk"]]
-2 = [[0, "k"], [1, "bBBb"], [5, "k"]]
-3 = [[1, "kkkk"]]
-[anim.idle]                # optional
-frames = ["idle_0", "idle_1", "idle_2"]
-ms = 400                   # duration of each frame; add `loop = false` to play once
+0 = [[1, "kkk"]]           #    row = [[column, "pixels"], ...]; the rest stays transparent
+1 = [[0, "kbwbk"]]
+2 = [[0, "k"], [1, "bBb"], [4, "k"]]
+3 = [[1, "kkk"]]
+[anim.idle]                # optional; a game plays it as <id>/idle
+frames = ["idle_0", { frame = "idle_1", ms = 150 }, "idle_2"]  # an entry can give its own length
+ms = 400                   # length of every other frame; add `loop = false` to play once
 [variants.red]             # optional: also makes the sprite <id>_red with these keys swapped
 swap = { b = "r", B = "R" }
 '''
@@ -49,6 +50,14 @@ Do not write a script to generate a grid: placing pixels at a row and column is 
 The default frame is what a game shows when no animation plays, and what the contact sheet shows.
 Sprite files may be anywhere in the project; `sprite new` writes to the root unless given `--dir`.
 `build = false` at the top of a file: the sprite is checked and previewed, never exported.
+`move` takes its rectangle (`rows` and `cols` are `[first, last]`) whole, transparent pixels too,
+and leaves transparency behind; a list of moves applies in order. `check` warns when `move` or
+`shift` pushes pixels off the canvas.
+`over = "<id>"` at the top of a file: the sprite is a layer, drawn over that sprite (its base) of
+the same class. The outline rule then counts the base's pixels as drawn, each frame over the base
+frame of the same name, else its default frame; grounded does not apply; previews draw the pair.
+`[anim.<name>]` holding only `like = "<id>"` plays as that sprite's animation of the same name:
+its frame names, lengths and looping. The frames are this sprite's own.
 """
 
 _RULES = """\
@@ -61,6 +70,8 @@ grounded: the bottom row of every frame must have a pixel.
 A sprite opts out with `outline = false` or `grounded = false` at the top of its file.
 `outline = "auto"` at the top of a file: draw the interior only, one pixel inside the canvas edge;
   the tool draws the outline with the first key listed for the class.
+`unoutlined = ["w"]` at the top of a file: pixels of those keys (smoke, sparks) take no outline;
+  the outline rule passes them and `outline = "auto"` draws none around them.
 """
 
 _PALETTE = """\
@@ -80,7 +91,10 @@ sprite show <id>... [--frame <name>] [--all]        print the finished grid as t
 sprite preview <id>... [--grid]                     write one image of those sprites and print its
                                                     path; it is drawn even with outline problems;
                                                     --grid labels every 4th row and column
-sprite preview <id> --on <tile-id>                  the sprite standing on a tile, as in the game
+sprite preview <id> --on <other-id>                 the sprite standing on another sprite, as in
+                                                    the game
+sprite preview <id>... --anim <name>                the animation's frames in play order with their
+                                                    lengths, and a GIF that plays it for each id
 sprite preview                                      contact sheet of every sprite
 sprite import <png> --canvas <class> [--snap]       write a sprite file from a PNG
 sprite build                                        check everything, then write the game's files
@@ -152,7 +166,7 @@ def _rules(canvas: Canvas) -> str:
 
 def _exports(project: Project) -> str:
     if not project.exports:
-        return "EXPORTS  none configured\n"
+        return "EXPORTS  none configured\n" + _SELECTION
     rows = [
         (target.type, Path(os.path.relpath(target.out, project.root)).as_posix(), _files(target))
         for target in project.exports
@@ -174,17 +188,41 @@ def _exports(project: Project) -> str:
             break_long_words=False,
             break_on_hyphens=False,
         )
-    return "".join(line + "\n" for line in lines)
+    return "".join(line + "\n" for line in lines) + _SELECTION
+
+
+# How an `[[export]]` table says which sprites it takes.
+_SELECTION = """\
+A target exports every sprite unless its [[export]] table in sprite-tool.toml selects some:
+  `canvases = ["unit"]` by class, `include = ["gear_*"]` and `exclude = ["sample_*"]` by id pattern.
+"""
 
 
 def _files(target: ExportTarget) -> str:
-    """What `sprite build` writes for `target`, as the exporters name the files."""
+    """What `sprite build` writes for `target`, as the exporters name the files,
+    and which sprites it takes when it does not take them all."""
     name = target.name
     if target.type == "frames":
-        return (
+        files = (
             "<id>.png (the default frame), <id>__<frame>.png when a sprite has several frames, "
-            f"{name}.json (size, anchor, scale, bounds)"
+            f"{name}.json (size, anchor, scale, bounds, animations)"
         )
-    if target.type == "phaser":
-        return f"{name}.png, {name}.json, {name}.anims.json"
-    return f"{name}.png, {name}.json (the index), one <id>.tres per sprite"
+    elif target.type == "phaser":
+        files = (
+            f"{name}.png, {name}.json, {name}.anims.json; frames are named <id>/<frame>, "
+            f"animations <id>/<anim>; {name} is the texture key"
+        )
+    else:
+        files = f"{name}.png, {name}.json (the index), one <id>.tres per sprite"
+    selection = _selection(target)
+    return f"{files}; only {selection}" if selection else files
+
+
+def _selection(target: ExportTarget) -> str:
+    """`canvases unit, map; exclude sample_*`, or nothing for a target that takes every sprite."""
+    keys = (
+        ("canvases", sorted(target.canvases or ())),
+        ("include", target.include or ()),
+        ("exclude", target.exclude),
+    )
+    return "; ".join(f"{key} {', '.join(values)}" for key, values in keys if values)

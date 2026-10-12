@@ -103,7 +103,7 @@ def load(root: Path) -> tuple[Project, list[Problem]]:
 
     canvases = _load_canvases(data.get("canvas"))
     preview = _load_preview(data.get("preview", {}))
-    exports = _load_exports(data.get("export", []), root)
+    exports = _load_exports(data.get("export", []), root, canvases)
 
     palette, problems = _load_palette(palette_path)
     if not problems:
@@ -222,15 +222,27 @@ def _load_preview(table: Any) -> PreviewConfig:
     )
 
 
-def _load_exports(raw: Any, root: Path) -> tuple[ExportTarget, ...]:
+def _load_exports(raw: Any, root: Path, canvases: dict[str, Canvas]) -> tuple[ExportTarget, ...]:
     if not isinstance(raw, list) or not all(isinstance(table, dict) for table in raw):
         raise ConfigError(f"{CONFIG_NAME}: export must be an array of [[export]] tables")
-    return tuple(_load_export(index, table, root) for index, table in enumerate(raw, start=1))
+    return tuple(_load_export(index, table, root, canvases) for index, table in enumerate(raw, start=1))
 
 
-def _load_export(index: int, table: dict[str, Any], root: Path) -> ExportTarget:
+def _strings(table: dict[str, Any], key: str, where: str, may_be_empty: bool = False) -> tuple[str, ...] | None:
+    """A selection key of an export: a list of non-empty strings, or None when it is not given."""
+    if key not in table:
+        return None
+    value = table[key]
+    if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+        raise ConfigError(f"{CONFIG_NAME}: {where}{key} must be a list of non-empty strings")
+    if not value and not may_be_empty:
+        raise ConfigError(f"{CONFIG_NAME}: {where}{key} must not be empty (it would select no sprite)")
+    return tuple(value)
+
+
+def _load_export(index: int, table: dict[str, Any], root: Path, canvases: dict[str, Canvas]) -> ExportTarget:
     where = f"export {index}: "
-    _reject_unknown(table, ("type", "out", "name", "res_path", "padding"), where)
+    _reject_unknown(table, ("type", "out", "name", "res_path", "padding", "canvases", "include", "exclude"), where)
 
     kind = table.get("type")
     if kind not in EXPORT_TYPES:
@@ -259,7 +271,24 @@ def _load_export(index: int, table: dict[str, Any], root: Path) -> ExportTarget:
         if not isinstance(res_path, str) or not res_path:
             raise ConfigError(f"{CONFIG_NAME}: {where}res_path is required for type 'godot'")
 
-    return ExportTarget(type=kind, out=(root / out).resolve(), name=name, res_path=res_path, padding=padding)
+    classes = _strings(table, "canvases", where)
+    for canvas in classes or ():
+        if canvas not in canvases:
+            expected = ", ".join(canvases)
+            raise ConfigError(
+                f"{CONFIG_NAME}: {where}canvases names unknown canvas class {canvas!r} (expected one of {expected})"
+            )
+
+    return ExportTarget(
+        type=kind,
+        out=(root / out).resolve(),
+        name=name,
+        res_path=res_path,
+        padding=padding,
+        canvases=None if classes is None else frozenset(classes),
+        include=_strings(table, "include", where),
+        exclude=_strings(table, "exclude", where, may_be_empty=True) or (),
+    )
 
 
 # --- palette ----------------------------------------------------------------
