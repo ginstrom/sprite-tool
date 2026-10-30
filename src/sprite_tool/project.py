@@ -154,12 +154,20 @@ def _int_pair(table: dict[str, Any], key: str, where: str) -> tuple[int, int]:
     return value[0], value[1]
 
 
-def _parse_hex(value: Any) -> tuple[int, int, int, int] | None:
+def parse_hex(value: Any) -> tuple[int, int, int, int] | None:
     """Parse `#rrggbb` or `#rrggbbaa`; None when `value` is not one of those."""
     if not isinstance(value, str) or not _HEX_RE.fullmatch(value):
         return None
     digits = value[1:] if len(value) == 9 else value[1:] + "ff"
     return tuple(int(digits[i : i + 2], 16) for i in range(0, 8, 2))  # type: ignore[return-value]
+
+
+def resolve_colour(text: str, palette: dict[str, Color]) -> tuple[int, int, int, int] | None:
+    """`#rrggbb` or `#rrggbbaa`, else a palette key's colour; None when it is neither."""
+    rgba = parse_hex(text)
+    if rgba is None and text in palette:
+        rgba = palette[text].rgba
+    return rgba
 
 
 def _load_canvases(raw: Any) -> dict[str, Canvas]:
@@ -213,7 +221,7 @@ def _load_preview(table: Any) -> PreviewConfig:
     if not isinstance(table, dict):
         raise ConfigError(f"{CONFIG_NAME}: preview must be a table")
     _reject_unknown(table, ("scale", "background"), "preview.")
-    background = _parse_hex(table.get("background", DEFAULT_PREVIEW_BACKGROUND))
+    background = parse_hex(table.get("background", DEFAULT_PREVIEW_BACKGROUND))
     if background is None:
         raise ConfigError(f"{CONFIG_NAME}: preview.background must be a hex colour (#rrggbb or #rrggbbaa)")
     return PreviewConfig(
@@ -342,7 +350,7 @@ def _load_palette(path: Path) -> tuple[dict[str, Color], list[Problem]]:
                 if name is not None and not isinstance(name, str):
                     report(where, "E002", f"name of palette colour {key!r} must be a string")
                     continue
-            rgba = _parse_hex(hex_value)
+            rgba = parse_hex(hex_value)
             if rgba is None:
                 report(where, "E002", f"bad colour for palette key {key!r}: expected #rrggbb or #rrggbbaa")
                 continue

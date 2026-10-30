@@ -9,13 +9,14 @@ import sys
 from collections.abc import Callable, Iterable, Sequence
 from importlib import resources
 from pathlib import Path
+from typing import Any
 
 from . import __version__, check, importer, manifest, render, spritefile, textview
 from . import preview as preview_module
 from . import guide as guide_module
 from . import project as project_module
 from .export import EXPORTERS, select
-from .model import Problem, Project, Sprite, format_problem
+from .model import TINT_MODES, Problem, Project, Sprite, Tint, format_problem, hex_colour
 from .project import CONFIG_NAME, ConfigError
 
 EXIT_OK = 0
@@ -364,6 +365,10 @@ def _preview(args: argparse.Namespace) -> int:
                 return _usage_error(f"--anim cannot be used with {flag}")
         if not ids:
             return _usage_error("--anim needs a sprite id")
+    if args.tint_mode is not None and args.tint is None:
+        return _usage_error("--tint-mode needs --tint")
+    if args.tint is not None and not ids:
+        return _usage_error("--tint needs a sprite id")
     sheet = args.sheet or not ids
     loaded = _load_drawable(args, [*ids, *([args.on] if args.on else [])], everything=sheet)
     if isinstance(loaded, int):
@@ -371,6 +376,27 @@ def _preview(args: argparse.Namespace) -> int:
     project, sprites, by_id = loaded
     # A layer is drawn over its base, here as in the game.
     bases = check.bases(sprites)
+    given: list[Tint | None] | None = None
+    tint_part = ""
+    if args.tint is not None:
+        given = _tints(args.tint, args.tint_mode or "multiply", project)
+        if isinstance(given, str):
+            return _usage_error(given)
+        tint_part = _tint_part(given)
+
+    def tints_of(name: str) -> list[Tint | None]:
+        """The tints to draw a sprite under; none for one drawn without panels."""
+        if given is not None:
+            return given
+        declared = [tint for _, tint in by_id[name].tints]
+        return [None, *declared] if declared else []
+
+    def in_panels(name: str, draw: Callable[[Tint | None], Any]) -> Any:
+        """The sprite drawn by `draw`, once under each of its tints, in panels."""
+        tints = tints_of(name)
+        if not tints:
+            return draw(None)
+        return preview_module.panels(project, [(preview_module.tint_label(tint), draw(tint)) for tint in tints])
 
     def scale_of(name: str) -> int:
         if args.scale == DISPLAY_SCALE:
@@ -391,35 +417,63 @@ def _preview(args: argparse.Namespace) -> int:
             if anim is None:
                 known = ", ".join(sorted(anim.name for anim in sprite.anims)) or "none"
                 return _usage_error(f"sprite {name!r} has no animation {args.anim!r} (animations: {known})")
-            base = bases.get(name)
-            strips.append(preview_module.anim_strip(project, sprite, anim, base, scale_of(name), args.points))
-            frames = preview_module.anim_frames(project, sprite, anim, base, scale_of(name), args.points)
-            gifs[f"{name}.anim-{args.anim}.gif"] = (frames, anim.loop)
-        images[f"{stem}.anim-{args.anim}"] = preview_module.stack(project, strips)
+            base, scale = bases.get(name), scale_of(name)
+            strips.append(
+                in_panels(
+                    name,
+                    lambda tint: preview_module.anim_strip(project, sprite, anim, base, scale, args.points, tint),
+                )
+            )
+            tints = tints_of(name)
+            if tints:
+                frames = preview_module.anim_panels(
+                    project,
+                    [
+                        (
+                            preview_module.tint_label(tint),
+                            preview_module.anim_frames(project, sprite, anim, base, scale, args.points, tint),
+                        )
+                        for tint in tints
+                    ],
+                )
+            else:
+                frames = preview_module.anim_frames(project, sprite, anim, base, scale, args.points)
+            gifs[f"{name}.anim-{args.anim}{tint_part}.gif"] = (frames, anim.loop)
+        images[f"{stem}.anim-{args.anim}{tint_part}"] = preview_module.stack(project, strips)
     elif ids:
         if args.on:
             kind = f"on-{args.on}"
             # The game draws the pair with no common factor.
             scale = 1 if args.scale == DISPLAY_SCALE else args.scale or preview_module.ON_TILE_SCALE
             parts = [
-                preview_module.on_tile(project, by_id[name], by_id[args.on], scale, bases, args.points) for name in ids
+                in_panels(
+                    name,
+                    lambda tint: preview_module.on_tile(
+                        project, by_id[name], by_id[args.on], scale, bases, args.points, tint
+                    ),
+                )
+                for name in ids
             ]
         else:
             kind = "grid" if args.grid else "plain"
             parts = [
-                preview_module.sprite_preview(
-                    project,
-                    by_id[name],
-                    [other for other in sprites if other.variant_of == name],
-                    scale_of(name),
-                    args.grid,
-                    display=not args.grid,
-                    base=bases.get(name),
-                    points=args.points,
+                in_panels(
+                    name,
+                    lambda tint: preview_module.sprite_preview(
+                        project,
+                        by_id[name],
+                        [other for other in sprites if other.variant_of == name],
+                        scale_of(name),
+                        args.grid,
+                        display=not args.grid,
+                        base=bases.get(name),
+                        points=args.points,
+                        tint=tint,
+                    ),
                 )
                 for name in ids
             ]
-        images[f"{stem}.{kind}"] = preview_module.stack(project, parts)
+        images[f"{stem}.{kind}{tint_part}"] = preview_module.stack(project, parts)
     if sheet:
         images["sheet"] = preview_module.contact_sheet(project, sprites, bases)
 
@@ -435,6 +489,32 @@ def _preview(args: argparse.Namespace) -> int:
     for name in [*(f"{name}.png" for name in images), *gifs]:
         print(_from_cwd(directory / name, project.root))
     return EXIT_OK
+
+
+def _tints(text: str, mode: str, project: Project) -> list[Tint | None] | str:
+    """The tints `--tint` names, in order and each once, `None` for `none`;
+    or the message for the first that is not a colour."""
+    tints: list[Tint | None] = []
+    for item in dict.fromkeys(item.strip() for item in text.split(",")):
+        if item == "none":
+            tints.append(None)
+            continue
+        rgba = project_module.resolve_colour(item, project.palette)
+        if rgba is None:
+            return f"bad tint {item!r}: expected #rrggbb, #rrggbbaa, a palette key or none"
+        label = hex_colour(rgba) if item.startswith("#") else f"{item} {hex_colour(rgba)}"
+        tints.append(Tint(rgba, mode, label))
+    return tints
+
+
+def _tint_part(tints: Sequence[Tint | None]) -> str:
+    """What a preview file's name gains for the tints of `--tint`."""
+    if len(tints) > 1:
+        return ".tints"
+    tint = tints[0]
+    if tint is None:
+        return ".tint-none"
+    return f".tint-{hex_colour(tint.colour)[1:]}" + ("-fill" if tint.mode == "fill" else "")
 
 
 def _show(args: argparse.Namespace) -> int:
@@ -604,6 +684,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--points", action="store_true", help="mark each named point's pixel in magenta (#ff00ff)"
     )
     preview.add_argument("--sheet", action="store_true", help="also write the contact sheet, sheet.png")
+    preview.add_argument(
+        "--tint",
+        metavar="<colour>[,...]",
+        help="draw each sprite under each colour, side by side, as a game tints it: #rrggbb, #rrggbbaa, "
+        "a palette key or none; replaces the sprite's declared tints",
+    )
+    preview.add_argument(
+        "--tint-mode",
+        choices=TINT_MODES,
+        help="multiply (default): multiply each pixel by the colour; fill: draw every pixel in the colour",
+    )
 
     show = commands.add_parser("show", parents=[in_project], help="print a sprite's finished grid as text")
     show.add_argument("ids", nargs="+", metavar="id", help="sprite ids to print, in this order")

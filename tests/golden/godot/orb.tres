@@ -1,0 +1,25 @@
+[gd_resource type="SpriteFrames" load_steps=4 format=3]
+
+[ext_resource type="Texture2D" path="res://sprites/atlas.png" id="1"]
+
+[sub_resource type="AtlasTexture" id="orb_orb_0"]
+atlas = ExtResource("1")
+region = Rect2(18, 67, 16, 16)
+
+[sub_resource type="AtlasTexture" id="orb_orb_1"]
+atlas = ExtResource("1")
+region = Rect2(35, 67, 16, 16)
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("orb_orb_0")
+}, {
+"duration": 1.0,
+"texture": SubResource("orb_orb_1")
+}],
+"loop": true,
+"name": &"pulse",
+"speed": 10.0
+}]

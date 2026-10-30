@@ -80,6 +80,18 @@ class Anim:
             object.__setattr__(self, "durations", (self.ms,) * len(self.frames))
 
 
+TINT_MODES = ("multiply", "fill")
+
+
+@dataclass(frozen=True)
+class Tint:
+    """A colour a game draws a sprite in. `label` is what preview prints over its panel."""
+
+    colour: tuple[int, int, int, int]
+    mode: str = "multiply"
+    label: str = ""
+
+
 @dataclass(frozen=True)
 class Sprite:
     """`frames[0]` is the default frame.
@@ -95,6 +107,8 @@ class Sprite:
     anim_likes: animation name, sprite id and file line of each `like` that
     `spritefile.load_all` has not resolved (yet, or because it failed).
     anim_rests: animation name and file line of each `rest = true` not resolved.
+    tints: the colours a game draws the sprite in, `(name, Tint)`, sorted by
+    name; `tints_line` is the file line of `tints`.
     """
 
     id: str
@@ -112,6 +126,8 @@ class Sprite:
     unoutlined: frozenset[str] = frozenset()
     anim_likes: tuple[tuple[str, str, int], ...] = ()
     anim_rests: tuple[tuple[str, int], ...] = ()
+    tints: tuple[tuple[str, Tint], ...] = ()
+    tints_line: int = 0
 
 
 @dataclass(frozen=True)

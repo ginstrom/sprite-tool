@@ -10,7 +10,7 @@ DEMO = Path(__file__).parent.parent / "examples" / "demo"
 def test_demo_project_checks_clean(capsys):
     assert main(["check", "--project", str(DEMO)]) == 0
     captured = capsys.readouterr()
-    assert captured.out == "ok: 8 sprites, 13 frames\n"
+    assert captured.out == "ok: 9 sprites, 15 frames\n"
     assert captured.err == ""
 
 
@@ -27,7 +27,7 @@ def test_demo_project_has_the_sprites_later_steps_rely_on():
     assert problems == []
     by_id = {sprite.id: sprite for sprite in sprites}
     assert sorted(by_id) == [
-        "arrow", "goblin", "ground_light", "sample_slime", "slime", "spark", "warrior", "warrior_red"
+        "arrow", "goblin", "ground_light", "orb", "sample_slime", "slime", "spark", "warrior", "warrior_red"
     ]
 
     warrior = by_id["warrior"]

@@ -1,0 +1,27 @@
+# An effect the game tints: drawn in greys, which the game multiplies by a spell's colour.
+# `tints` names the colours it is drawn in; preview draws it under each, and the indexes list them.
+canvas = "effect"
+tints = { fire = "#ff7a1a", frost = "C", flash = { colour = "#ffffff", mode = "fill" } }
+
+[frames.orb_0.runs]
+5 = [[6, "dddd"]]
+6 = [[5, "dlllld"]]
+7 = [[5, "dlwwld"]]
+8 = [[5, "dlwwld"]]
+9 = [[5, "dlllld"]]
+10 = [[6, "dddd"]]
+
+[frames.orb_1.runs]
+4 = [[6, "dddd"]]
+5 = [[5, "dlllld"]]
+6 = [[4, "dllwwlld"]]
+7 = [[4, "dlwwwwld"]]
+8 = [[4, "dlwwwwld"]]
+9 = [[4, "dllwwlld"]]
+10 = [[5, "dlllld"]]
+11 = [[6, "dddd"]]
+
+[anim.pulse]
+frames = ["orb_0", "orb_1"]
+ms = 100
+loop = true

@@ -332,7 +332,8 @@ def test_sheet_groups_by_canvas_class_and_sorts_by_id(loaded):
     project, sprites = loaded
     image = preview.contact_sheet(project, list(sprites.values())[::-1])
     # Units: five cells as wide as the label `sample_slime`. Tile: one as wide as `ground_light`.
-    # Effects: two cells as wide as the art, 16 pixels at 2x, under a shorter row.
+    # Effects: cells as wide as the art, 16 pixels at 2x, under a shorter row; the orb's
+    # three tints follow it.
     unit_w, tile_w, effect_w = 12 * CHAR_WIDTH, 12 * CHAR_WIDTH, 32
     effect_h = 32 + LABEL_GAP + LINE_HEIGHT
     assert image.size == (2 * MARGIN + 5 * unit_w + 4 * GAP, 2 * MARGIN + 2 * CELL_H + effect_h + 2 * GAP)
@@ -341,7 +342,7 @@ def test_sheet_groups_by_canvas_class_and_sorts_by_id(loaded):
         assert art_at(project, sprites[sprite_id], 2, image, at), sprite_id
     at = (MARGIN + (tile_w - 64) // 2, MARGIN + CELL_H + GAP)
     assert art_at(project, sprites["ground_light"], 4, image, at)
-    for column, sprite_id in enumerate(["arrow", "spark"]):
+    for column, sprite_id in [(0, "arrow"), (1, "orb"), (5, "spark")]:
         at = (MARGIN + column * (effect_w + GAP), MARGIN + 2 * (CELL_H + GAP))
         assert art_at(project, sprites[sprite_id], 2, image, at), sprite_id
 
@@ -673,7 +674,7 @@ def test_a_bad_palette_prints_its_problems_and_writes_nothing(demo, capsys):
 def test_unknown_id_is_a_usage_error(demo, capsys, argv, name):
     assert run(*argv) == 2
     captured = capsys.readouterr()
-    known = "(sprites: arrow, goblin, ground_light, sample_slime, slime, spark, warrior, warrior_red)"
+    known = "(sprites: arrow, goblin, ground_light, orb, sample_slime, slime, spark, warrior, warrior_red)"
     assert (captured.out, captured.err) == ("", f"error: unknown sprite id '{name}' {known}\n")
     assert previews(demo) == []
 

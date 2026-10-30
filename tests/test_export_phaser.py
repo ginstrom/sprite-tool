@@ -28,6 +28,8 @@ FRAME_KEYS = [
     "arrow/main",
     "goblin/main",
     "ground_light/main",
+    "orb/orb_0",
+    "orb/orb_1",
     "slime/main",
     "spark/burst_0",
     "spark/burst_1",
@@ -140,7 +142,7 @@ def test_pivot_is_written_as_a_decimal_even_when_whole(demo):
 
 def test_a14_units_and_the_tile_share_one_sheet_at_their_own_sizes(atlas):
     sizes = {key: (entry["frame"]["w"], entry["frame"]["h"]) for key, entry in atlas["frames"].items()}
-    for key in [key for key in sizes if key.split("/")[0] in ("ground_light", "arrow", "spark")]:
+    for key in [key for key in sizes if key.split("/")[0] in ("ground_light", "arrow", "orb", "spark")]:
         assert sizes.pop(key) == (16, 16)
     assert set(sizes.values()) == {(32, 32)}
 
@@ -158,9 +160,9 @@ def test_a5_red_variant_frame_differs_from_the_base(demo, atlas):
 # --- atlas.anims.json -------------------------------------------------------
 
 
-def test_demo_animations_are_the_warrior_idle_its_variant_and_the_spark(demo, anims):
+def test_demo_animations_are_the_warrior_idle_its_variant_the_orb_and_the_spark(demo, anims):
     assert sorted(json.loads(demo[2]["atlas.anims.json"])) == ["anims"]
-    assert sorted(anims) == ["spark/burst", "warrior/idle", "warrior_red/idle"]
+    assert sorted(anims) == ["orb/pulse", "spark/burst", "warrior/idle", "warrior_red/idle"]
     assert anims["spark/burst"]["repeat"] == 0
     assert anims["warrior/idle"] == {
         "frames": [
@@ -279,7 +281,7 @@ def test_build_writes_the_phaser_target(tmp_path, capsys):
     )
 
     assert main(["build", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "built: 7 sprites, 12 frames, 1 target\n"
+    assert capsys.readouterr().out == "built: 8 sprites, 14 frames, 1 target\n"
     out = root / "out" / "sprites"
     assert sorted(path.name for path in out.iterdir()) == sorted(
         [MANIFEST_NAME, "units.anims.json", "units.json", "units.png"]

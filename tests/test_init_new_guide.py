@@ -445,7 +445,7 @@ def test_guide_example_is_a_valid_sprite_file_for_the_demo(tmp_path, capsys):
     assert EXAMPLE in guide(root, capsys)
 
     assert main(["check", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "ok: 10 sprites, 19 frames\n"
+    assert capsys.readouterr().out == "ok: 11 sprites, 21 frames\n"
 
 
 def test_guide_reflects_the_project(tmp_path, capsys):
@@ -697,7 +697,7 @@ def test_a33_a35_guide_names_show_and_runs_and_warns_off_a_generator_script(caps
         "frames are named <id>/<frame>, animations <id>/<anim>; atlas is the texture key",
         "sprite preview <id>... --anim <name>",
         "and a GIF that plays it for each id",
-        "the sprite standing on another sprite, as in the game",
+        "the sprite standing on another, as in the game",
     ],
 )
 def test_a57_guide_names_what_release_05_added(capsys, phrase):

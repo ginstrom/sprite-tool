@@ -2,6 +2,10 @@
 sprite standing on a tile; a contact sheet of every sprite; and an animation
 as a labelled strip and as the frames of a GIF.
 
+Each can be drawn under a tint, the colour a game draws the sprite in; only
+the sprite's own pixels are tinted. `panels` puts the images of one sprite
+under several tints side by side.
+
 A layer (a sprite with `over`) is drawn over its base wherever it is drawn:
 each function takes the base, or `bases`, the base of each layer by the
 layer's id, as `check.bases` gives it.
@@ -19,7 +23,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from sprite_tool import render
 from sprite_tool.check import paired
-from sprite_tool.model import Anim, Frame, Project, Sprite
+from sprite_tool.model import Anim, Frame, Project, Sprite, Tint
 
 # Background border around every preview image.
 MARGIN = 8
@@ -52,13 +56,39 @@ Colour = tuple[int, int, int, int]
 NO_BASES: Mapping[str, Sprite] = {}
 
 
+def tinted(image: Image.Image, tint: Tint | None) -> Image.Image:
+    """An RGBA image as a game draws it under `tint`, on 8-bit channels.
+
+    multiply: each channel, alpha included, becomes `round(pixel * tint / 255)`.
+    fill: the colour becomes the tint's, the alpha is multiplied as above.
+    """
+    if tint is None:
+        return image
+    tables = [[(value * channel + 127) // 255 for value in range(256)] for channel in tint.colour]
+    if tint.mode == "fill":
+        tables[:3] = [[channel] * 256 for channel in tint.colour[:3]]
+    return image.point([entry for table in tables for entry in table])
+
+
+def tint_label(tint: Tint | None) -> str:
+    """What a panel drawn under `tint` is labelled: its label, `none` for no tint."""
+    if tint is None:
+        return "none"
+    return tint.label + (" fill" if tint.mode == "fill" else "")
+
+
 def drawn(
-    project: Project, sprite: Sprite, frame: Frame, base: Sprite | None = None, points: bool = False
+    project: Project,
+    sprite: Sprite,
+    frame: Frame,
+    base: Sprite | None = None,
+    points: bool = False,
+    tint: Tint | None = None,
 ) -> Image.Image:
-    """The frame's image; for a layer, over the frame of `base` it is paired with.
-    With `points`, each point's pixel is `POINT_MARKER`, one sprite pixel at
-    any scale."""
-    art = render.render(frame, project.palette)
+    """The frame's image under `tint`; for a layer, over the frame of `base`
+    it is paired with, which is not tinted. With `points`, each point's pixel
+    is `POINT_MARKER`, one sprite pixel at any scale."""
+    art = tinted(render.render(frame, project.palette), tint)
     if base is not None:
         art = Image.alpha_composite(render.render(paired(base, frame.name), project.palette), art)
     if points:
@@ -76,9 +106,11 @@ def sprite_preview(
     display: bool = False,
     base: Sprite | None = None,
     points: bool = False,
+    tint: Tint | None = None,
 ) -> Image.Image:
     """Every frame of `sprite` left to right, then one row per variant, by id.
     A layer and its variants are drawn over `base`. `points`: mark them.
+    `tint`: every row is drawn under it.
 
     With `display`, each row's frames follow again at the class's
     `display_scale`, the size the game draws them, top-aligned and without the
@@ -86,7 +118,7 @@ def sprite_preview(
     """
     rows = [sprite, *sorted(variants, key=lambda variant: variant.id)]
     # Each group is every row's tiles at one size; the groups stand side by side.
-    arts = [[drawn(project, row, frame, base, points) for frame in row.frames] for row in rows]
+    arts = [[drawn(project, row, frame, base, points, tint) for frame in row.frames] for row in rows]
     groups = [[[_frame_tile(project, art, scale, grid) for art in row] for row in arts]]
     game_scale = sprite.canvas.display_scale
     if display and game_scale != scale:
@@ -129,6 +161,23 @@ def stack(project: Project, images: Iterable[Image.Image]) -> Image.Image:
     return result
 
 
+def panels(project: Project, labelled: Sequence[tuple[str, Image.Image]]) -> Image.Image:
+    """The images left to right on the preview background, each under its
+    label. A panel is as wide as the wider of its image and its label with a
+    margin each side; the images keep their own margins."""
+    background = project.preview.background
+    widths = [max(image.width, len(label) * CHAR_WIDTH + 2 * MARGIN) for label, image in labelled]
+    top = MARGIN + LINE_HEIGHT + LABEL_GAP
+    result = Image.new("RGBA", (sum(widths), top + max(image.height for _, image in labelled)), background)
+    draw = ImageDraw.Draw(result)
+    x = 0
+    for (label, image), width in zip(labelled, widths):
+        draw.text((x + MARGIN, MARGIN), label, font=_FONT, fill=_ink(background))
+        result.paste(image, (x, top))
+        x += width
+    return result
+
+
 def on_tile(
     project: Project,
     sprite: Sprite,
@@ -136,15 +185,16 @@ def on_tile(
     scale: int,
     bases: Mapping[str, Sprite] = NO_BASES,
     points: bool = False,
+    tint: Tint | None = None,
 ) -> Image.Image:
     """The default frame of `sprite` standing on the default frame of `tile`.
 
     Each is enlarged by its class's `display_scale` times `scale`, and the
     sprite's anchor is put on the bottom centre of the tile. `points`: mark
-    the sprite's.
+    the sprite's. `tint`: the sprite's, never the tile's.
     """
     ground = _display(project, tile, scale, bases.get(tile.id))
-    figure = _display(project, sprite, scale, bases.get(sprite.id), points)
+    figure = _display(project, sprite, scale, bases.get(sprite.id), points, tint)
     factor = sprite.canvas.display_scale * scale
     # Positions with the tile's top left at the origin.
     figure_x = ground.width // 2 - sprite.canvas.anchor[0] * factor
@@ -161,63 +211,83 @@ def contact_sheet(
     project: Project, sprites: Iterable[Sprite], bases: Mapping[str, Sprite] = NO_BASES
 ) -> Image.Image:
     """Every sprite's default frame at its class's `display_scale`, with its id
-    underneath. Classes are in config order, each starting a new row; sprites
-    are sorted by id."""
+    underneath, and after a sprite with tints its default frame under each,
+    with the tint's name underneath. Classes are in config order, each
+    starting a new row; sprites are sorted by id."""
     sprites = list(sprites)
     background = project.preview.background
-    cells: list[tuple[Sprite, int, int, int]] = []  # sprite, cell x, cell y, cell width
+    # sprite, tint, label, cell x, cell y, cell width
+    cells: list[tuple[Sprite, Tint | None, str, int, int, int]] = []
     width, y = 0, MARGIN
     for name in project.canvases:
         group = sorted((sprite for sprite in sprites if sprite.canvas.name == name), key=lambda sprite: sprite.id)
         if not group:
             continue
+        entries = [
+            entry
+            for sprite in group
+            for entry in [(sprite, None, sprite.id), *((sprite, tint, tint.label) for _, tint in sprite.tints)]
+        ]
         canvas = group[0].canvas
-        cell_w = max(canvas.width * canvas.display_scale, *(len(sprite.id) * CHAR_WIDTH for sprite in group))
+        cell_w = max(canvas.width * canvas.display_scale, *(len(label) * CHAR_WIDTH for _, _, label in entries))
         cell_h = canvas.height * canvas.display_scale + LABEL_GAP + LINE_HEIGHT
-        for index, sprite in enumerate(group):
+        for index, (sprite, tint, label) in enumerate(entries):
             row, column = divmod(index, SHEET_COLUMNS)
-            cells.append((sprite, MARGIN + column * (cell_w + GAP), y + row * (cell_h + GAP), cell_w))
-        columns = min(len(group), SHEET_COLUMNS)
-        rows = -(-len(group) // SHEET_COLUMNS)
+            cells.append((sprite, tint, label, MARGIN + column * (cell_w + GAP), y + row * (cell_h + GAP), cell_w))
+        columns = min(len(entries), SHEET_COLUMNS)
+        rows = -(-len(entries) // SHEET_COLUMNS)
         width = max(width, columns * cell_w + (columns - 1) * GAP)
         y += rows * (cell_h + GAP)
 
     height = y - GAP - MARGIN if cells else 0
     image = Image.new("RGBA", (2 * MARGIN + width, 2 * MARGIN + height), background)
     draw = ImageDraw.Draw(image)
-    for sprite, x, cell_y, cell_w in cells:
-        art = _display(project, sprite, 1, bases.get(sprite.id))
+    for sprite, tint, label, x, cell_y, cell_w in cells:
+        art = _display(project, sprite, 1, bases.get(sprite.id), tint=tint)
         image.alpha_composite(art, (x + (cell_w - art.width) // 2, cell_y))
-        label_x = x + (cell_w - len(sprite.id) * CHAR_WIDTH) // 2
-        draw.text((label_x, cell_y + art.height + LABEL_GAP), sprite.id, font=_FONT, fill=_ink(background))
+        label_x = x + (cell_w - len(label) * CHAR_WIDTH) // 2
+        draw.text((label_x, cell_y + art.height + LABEL_GAP), label, font=_FONT, fill=_ink(background))
     return image
 
 
 def anim_frames(
-    project: Project, sprite: Sprite, anim: Anim, base: Sprite | None, scale: int, points: bool = False
+    project: Project,
+    sprite: Sprite,
+    anim: Anim,
+    base: Sprite | None,
+    scale: int,
+    points: bool = False,
+    tint: Tint | None = None,
 ) -> list[tuple[Image.Image, int]]:
     """A tile and its length in ms for each entry of `anim`, in play order.
 
     A tile is the frame on the preview background, `scale` times larger, a
     layer's over the frame of `base` with the same name. `points`: mark them.
+    `tint`: the sprite's pixels are drawn under it.
     """
     frames = {frame.name: frame for frame in sprite.frames}
     tiles = {
-        name: _frame_tile(project, drawn(project, sprite, frames[name], base, points), scale, False)
+        name: _frame_tile(project, drawn(project, sprite, frames[name], base, points, tint), scale, False)
         for name in dict.fromkeys(anim.frames)
     }
     return [(tiles[name], ms) for name, ms in zip(anim.frames, anim.durations)]
 
 
 def anim_strip(
-    project: Project, sprite: Sprite, anim: Anim, base: Sprite | None, scale: int, points: bool = False
+    project: Project,
+    sprite: Sprite,
+    anim: Anim,
+    base: Sprite | None,
+    scale: int,
+    points: bool = False,
+    tint: Tint | None = None,
 ) -> Image.Image:
     """The tiles of `anim` left to right in play order, each over its frame's
     name and, on a second line, its length. A cell is as wide as the wider of
     its tile and its label."""
     background = project.preview.background
     cells = []  # tile, label lines, cell width
-    for (tile, ms), name in zip(anim_frames(project, sprite, anim, base, scale, points), anim.frames):
+    for (tile, ms), name in zip(anim_frames(project, sprite, anim, base, scale, points, tint), anim.frames):
         labels = [name, f"{ms} ms"]
         cells.append((tile, labels, max(tile.width, *(len(label) * CHAR_WIDTH for label in labels))))
     tile_h = cells[0][0].height
@@ -234,6 +304,19 @@ def anim_strip(
             draw.text((label_x, label_y), label, font=_FONT, fill=_ink(background))
         x += cell_w + GAP
     return image
+
+
+def anim_panels(
+    project: Project, labelled: Sequence[tuple[str, Sequence[tuple[Image.Image, int]]]]
+) -> list[tuple[Image.Image, int]]:
+    """The frames of one animation under several tints, `(label, anim_frames)`,
+    as one frame list: each frame has every tint's tile side by side under
+    its label, so they play in step."""
+    played = zip(*(frames for _, frames in labelled))
+    return [
+        (panels(project, [(label, _framed(project, tile)) for (label, _), (tile, _) in zip(labelled, step)]), step[0][1])
+        for step in played
+    ]
 
 
 def gif_ms(ms: int) -> int:
@@ -262,10 +345,15 @@ def save_gif(path: Path, frames: Sequence[tuple[Image.Image, int]], loop: bool) 
 
 
 def _display(
-    project: Project, sprite: Sprite, scale: int, base: Sprite | None = None, points: bool = False
+    project: Project,
+    sprite: Sprite,
+    scale: int,
+    base: Sprite | None = None,
+    points: bool = False,
+    tint: Tint | None = None,
 ) -> Image.Image:
     """The sprite's default frame at its class's `display_scale` times `scale`."""
-    art = drawn(project, sprite, sprite.frames[0], base, points)
+    art = drawn(project, sprite, sprite.frames[0], base, points, tint)
     return _enlarge(art, sprite.canvas.display_scale * scale)
 
 
@@ -301,6 +389,13 @@ def _frame_tile(project: Project, art: Image.Image, scale: int, grid: bool) -> I
         if index < art.height:
             draw.text((GRID_MARGIN - 2 - label_w, centre - LINE_HEIGHT // 2), label, font=_FONT, fill=ink)
     return tile
+
+
+def _framed(project: Project, image: Image.Image) -> Image.Image:
+    """`image` with a `MARGIN` of background all round."""
+    framed = Image.new("RGBA", (image.width + 2 * MARGIN, image.height + 2 * MARGIN), project.preview.background)
+    framed.paste(image, (MARGIN, MARGIN))
+    return framed
 
 
 def _enlarge(image: Image.Image, factor: int) -> Image.Image:

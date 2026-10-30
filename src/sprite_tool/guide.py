@@ -76,6 +76,9 @@ centre from the canvas's top left (`[25.5, 18.5]`): Phaser has it as the frame's
 EFFECTS  arrows, bolts, sparks: a class anchored at its centre, with no outline or grounded rule.
 Draw the effect pointing right; the game turns it about the anchor by its angle of flight. Name
 its leading pixel `tip`. A one-shot effect is an animation with `loop = false`.
+TINTS  draw an effect a game tints in greys, and name its tints: `tints = { fire = "#ff7a1a",
+flash = { colour = "#ffffff", mode = "fill" } }`. Previews draw each; the indexes list them; check
+warns (W010) of coloured keys. Linear-light engines (Unity, Godot HDR 2D) come out lighter.
 """
 
 _RULES = """\
@@ -112,10 +115,11 @@ sprite preview <id>... [--grid] [--points]          write one image of those spr
                                                     path; it is drawn even with outline problems;
                                                     --grid labels every 4th row and column;
                                                     --points marks named points in magenta
-sprite preview <id> --on <other-id>                 the sprite standing on another sprite, as in
-                                                    the game
+sprite preview <id> --on <other-id>                 the sprite standing on another, as in the game
 sprite preview <id>... --anim <name>                the animation's frames in play order with their
                                                     lengths, and a GIF that plays it for each id
+sprite preview <id>... --tint <colour>,...          each sprite tinted by each colour, side by side:
+                                                    #rrggbb, a palette key or none; --tint-mode fill
 sprite preview                                      contact sheet of every sprite
 sprite import <png> --canvas <class> [--snap]       write a sprite file from a PNG
 sprite build                                        check everything, then write the game's files

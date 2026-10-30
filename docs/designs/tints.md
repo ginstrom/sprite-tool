@@ -1,9 +1,13 @@
 # sprite-tool 0.7: tints
 
 - **Date:** 2026-10-30
-- **Status:** Ready for planning. No question blocks implementation;
-  assumptions and non-blocking questions are in
-  [section 8](#8-open-questions-and-assumptions).
+- **Status:** Implemented in 0.7.0. Assumptions and non-blocking questions
+  are in [section 8](#8-open-questions-and-assumptions). Where the build
+  differs from the text below: W010 names keys in palette order, so the
+  demo palette gives `o, y`, not `y, o` as in the 4.4 example; the demo
+  orb's `pulse` is 100 ms a frame; a panel's label sits at its image's left
+  margin; and the guide's COMMANDS entry is `--tint <colour>,...` with
+  `--tint-mode fill` in its description.
 - **Amends:** [sprite-tool.md](sprite-tool.md) (the base design), after
   [feedback-fixes.md](feedback-fixes.md) (0.3),
   [text-view-and-runs-discovery.md](text-view-and-runs-discovery.md) (0.4),

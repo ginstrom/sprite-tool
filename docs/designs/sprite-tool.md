@@ -23,6 +23,10 @@
   [points-and-effect-sprites.md](points-and-effect-sprites.md): named points,
   the `effect` canvas class, `mirror`, `show --diff` and a layer's
   `rest = true` (requirements R34 to R46, criteria A58 to A77).
+- **Amended:** 2026-10-30, for release 0.7.0, by [tints.md](tints.md):
+  `preview --tint` and `--tint-mode`, a sprite's declared `tints`, their
+  export in the indexes, E110 and W010 (requirements R47 to R57, criteria
+  A78 to A92).
 - **Status:** Ready for planning. No blocking questions; assumptions and
   non-blocking questions are listed in [section 8](#8-open-questions-and-assumptions).
 
@@ -408,6 +412,17 @@ sprite's points. Bad names, values, pixels off the canvas and a
 `[frame_points]` table naming an unknown frame are E109, and the bad point is
 left out. The exports carry points as the centre of the pixel (4.7).
 
+**Tints.** `tints` at top level names the colours a game draws the sprite
+in, as an inline table or a `[tints]` table. A name matches `[a-z0-9_]+`. A
+string value is a colour (`#rrggbb`, `#rrggbbaa` or a palette key, resolved
+when the file is parsed) with mode `multiply`; a table value has `colour`
+(required) and `mode` (`multiply`, the default, or `fill`) and no other key.
+A variant has its sprite's resolved tints, whatever its `swap`. `tints = {}`
+is no tints. A bad table, name, value, colour or mode is E110, and the bad
+tint (or the whole `tints`) is left out. Previews draw each tint (4.8), the
+indexes list them (4.7), and W010 warns of strong colours in a sprite with a
+multiply tint (4.6). The tool never exports a tinted image.
+
 **Layers.** `over = "<sprite id>"` at top level names the sprite this one is
 drawn over, its **base**, which makes this sprite a **layer**. A frame of the
 layer is paired with the base's frame of the same name, else with the base's
@@ -473,7 +488,7 @@ failures, `2` usage or config error.
 | `sprite guide` | Print the format reference, palette legend (key, hex, name) and canvas classes with their rules. | The guide |
 | `sprite new <id> --canvas <class> [--dir <subdir>] [--runs]` | Write a sprite file with one all-transparent frame named `main`: a grid of dots, or with `--runs` an empty `[frames.main.runs]` table under a comment giving the form of a run line. Refuses to overwrite. | The path |
 | `sprite check [paths...]` | Check all sprite files, or only the given files. `.png` paths are checked as images and need `--canvas <class>`. | `ok: 12 sprites, 31 frames` |
-| `sprite preview [id...] [--scale N\|display] [--grid] [--on <tile-id>] [--sheet] [--anim <name>] [--points]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
+| `sprite preview [id...] [--scale N\|display] [--grid] [--on <tile-id>] [--sheet] [--anim <name>] [--points] [--tint <colour>,... [--tint-mode multiply\|fill]]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
 | `sprite show <id>... [--frame <name>]... [--all] [--diff [<frame>]]` | Print the resolved grid of each id's default frame as text, with row and column numbers, then one `point <name> <col>,<row>` line per point; `--frame` picks frames, `--all` prints every one. With exactly one `--frame`, `--diff` prints only the rows that differ from the frame's `from` frame (or the named frame), each followed by a line with `^` under each changed column, under the header `<id> <frame> vs <other>`; two equal frames give `no rows differ`. `--diff` with `--all`, without one `--frame`, on a frame with no `from` and no name given, or naming an unknown frame, is exit 2. Writes no file. Problems are handled as `preview` handles them. | One block per frame, with a blank line between blocks |
 | `sprite build [--check] [--adopt [id...]]` | Run `check` on everything, then write every export target. With `--check`, write nothing and exit 1 if any generated file is missing or differs. `--adopt` is described below. | `built: 12 sprites, 31 frames, 3 targets`, after one `adopted <path>` line per adopted file |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. Refuses to overwrite. | The path |
@@ -535,6 +550,7 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 | E107 | `swap` or `unoutlined` names a key not in the palette. |
 | E108 | `over` names an unknown sprite, the sprite itself, a layer, or a sprite of another canvas class. |
 | E109 | A bad named point: a name not matching `[a-z0-9_]+`, a value that is not two integers, a pixel outside the canvas, a `[frame_points]` table naming a frame the sprite does not have, or `[points]`, `[frame_points]` or `[frame_points.<frame>]` that is not a table. The point is left out; the sprite still loads. |
+| E110 | A bad tint: `tints` that is not a table, a name not matching `[a-z0-9_]+`, a value that is neither a colour string nor a table, a colour that is not `#rrggbb`, `#rrggbbaa` or a palette key (`none` included), or a table with no `colour`, a key other than `colour` and `mode`, or a `mode` other than `multiply` or `fill`. The tint is left out; the sprite still loads. |
 | E201 | Outline rule violated at a pixel. At most 10 per frame, then a count. In a sprite with `outline = "auto"`: `frame 'main': 'b' is on the canvas edge; with outline = "auto" keep the interior 1 pixel inside`. |
 | E202 | Grounded rule violated. |
 | E301 | PNG size does not match the canvas. |
@@ -549,6 +565,7 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 | W007 | An animation of a layer differs from its base's animation of the same name in frame count or lengths. A `rest` is not compared. |
 | W008 | A derived frame's operations take a named point off the canvas: `frame 'idle_1': shift [0, 1] takes point 'grip' off the canvas`. Not given when the frame's own `[frame_points]` puts the point back. |
 | W009 | A layer neither has nor rests through an animation its base has: `anim 'walk': 'warrior' animates it and this layer does not; add [anim.walk] with like or rest = true`. Not given when the layer's `like` or `rest` of that name failed. |
+| W010 | A sprite with at least one multiply tint draws, in any frame, with a palette key whose chroma (largest of R, G, B minus smallest) is over 64: `tinted sprite draws with coloured keys o, y (chroma over 64); multiplying muddies them: draw tinted art in greys`, keys in palette order, at the line of `tints`. Once for a sprite, not again for its variants. |
 
 E106 is for an empty frame in a sprite that has drawn frames. An outline
 fault that a derived frame only carries over from its `from` frame is
@@ -627,7 +644,10 @@ target exports. Frames are always full canvas size.
   with named points has `points`, by frame then by point name, sorted, for
   the frames that have any: `{"idle_0": {"grip": [25.5, 18.5]}}`, each the
   centre of its pixel in canvas pixels from the top left. A sprite without
-  points has no `points` key. A target
+  points has no `points` key. A sprite with tints has `tints`, by name,
+  sorted: `{"fire": {"colour": "#ff7a1a", "mode": "multiply"}}`, the colour
+  written `#rrggbb`, or `#rrggbbaa` when not opaque; one without has no
+  `tints` key. A target
   with no sprites writes `{}`. `build --check` compares the index like any generated
   file, which is what flags a config change (a new `display_scale`, say) that
   the exports have not caught up with.
@@ -661,7 +681,7 @@ target exports. Frames are always full canvas size.
 - `<name>.json`: a plain index, `{"<id>": {"anchor": [x, y], "bounds": [x, y, w, h],
   "canvas": "<class>", "size": [w, h], "display_scale": n,
   "frames": {"<frame>": [x, y, w, h]}}}`, because `SpriteFrames` cannot carry
-  an anchor. `canvas`, `bounds`, `anims`, `over` and `points` are as in the `frames`
+  an anchor. `canvas`, `bounds`, `anims`, `over`, `points` and `tints` are as in the `frames`
   index, `bounds` being the sprite-level box; the `frames` values here are rectangles on the
   sheet.
 - The tool does not write `.import` files or `uid`s. Godot creates those on
@@ -749,6 +769,27 @@ otherwise it is a config error (exit 2). The example config in 4.3 shows
   more time on that one. `--anim` with `--grid`, `--on`, `--sheet` or no id,
   and an id without that animation, are usage errors (exit 2). It prints one
   path per file: the strip, then each GIF.
+- `--tint <colour>[,<colour>...]` draws each requested sprite once per
+  colour, left to right, each panel the image the command draws without a
+  tint under a label line. A colour is `#rrggbb`, `#rrggbbaa` (either case),
+  a palette key or `none`; a repeated one is drawn once. Multiply sets each
+  channel, alpha included, to `(pixel * tint + 127) // 255`; with
+  `--tint-mode fill` the colour becomes the tint's and the alpha is
+  multiplied the same way. Only the sprite's own pixels are tinted, before a
+  layer is composited over its untinted base: never the background, grid,
+  labels, the tile under `--on` or the `--points` marker. Variant rows are
+  tinted like the sprite's. Labels are the hex colour, `<key> <hex>` for a
+  palette key, `none`, followed by ` fill` for fill. One colour adds
+  `.tint-<hex>` to the file name (eight digits when not opaque, `-fill` for
+  fill, `.tint-none` for `none`); several add `.tints`. With `--anim` the
+  strip has a panel per tint and each id's GIF (named with the same part)
+  shows every tint's tile side by side in step. A bad colour, `--tint`
+  without an id and `--tint-mode` without `--tint` are usage errors (exit 2).
+- A sprite with declared tints (4.4) is drawn without `--tint` as panels
+  `none`, then each tint by name, with no tint part in the file name; the
+  contact sheet follows its cell with one cell per tint, labelled with the
+  tint's name. `--tint` replaces the declared tints for that run. A sprite
+  without tints is drawn with no panel and no label.
 - Preview files go to `.preview/` in the project and are not committed.
   Previews are for looking, so they are exempt from Q1.
 
@@ -865,6 +906,11 @@ class Sprite:     id: str; source: Path; canvas: Canvas
                   unoutlined: frozenset[str] = frozenset()
                   anim_likes: tuple[tuple[str, str, int], ...] = ()   # `like`s not resolved
                   anim_rests: tuple[tuple[str, int], ...] = ()        # `rest`s not resolved
+                  tints: tuple[tuple[str, Tint], ...] = ()  # (name, tint), sorted; tints_line is the file line
+
+@dataclass(frozen=True)
+class Tint:       colour: tuple[int, int, int, int]; mode: str = "multiply"  # or "fill"
+                  label: str = ""                        # what preview prints over its panel
 
 @dataclass(frozen=True)
 class ExportTarget: type: str; out: Path; name: str | None; res_path: str | None; padding: int
@@ -881,7 +927,7 @@ class Placement:  sprite_id: str; frame: str; x: int; y: int; w: int; h: int
 A variant is expanded into an ordinary `Sprite` (with swapped rows and id
 `<sprite>_<variant>`) before checks and export. Nothing downstream knows about
 variants. It inherits `auto_outline`, `build`, `over` and the resolved
-animations from its sprite.
+animations from its sprite, and its tints.
 
 `Frame.origins` is what lets `check` tell an outline fault a derived frame
 only carries over from one it creates, whatever operations made the frame:

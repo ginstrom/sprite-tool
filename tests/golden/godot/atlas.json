@@ -88,6 +88,67 @@
       16
     ]
   },
+  "orb": {
+    "anchor": [
+      8,
+      8
+    ],
+    "anims": {
+      "pulse": {
+        "frames": [
+          {
+            "frame": "orb_0",
+            "ms": 100
+          },
+          {
+            "frame": "orb_1",
+            "ms": 100
+          }
+        ],
+        "loop": true
+      }
+    },
+    "bounds": [
+      4,
+      4,
+      8,
+      8
+    ],
+    "canvas": "effect",
+    "display_scale": 2,
+    "frames": {
+      "orb_0": [
+        18,
+        67,
+        16,
+        16
+      ],
+      "orb_1": [
+        35,
+        67,
+        16,
+        16
+      ]
+    },
+    "size": [
+      16,
+      16
+    ],
+    "tints": {
+      "fire": {
+        "colour": "#ff7a1a",
+        "mode": "multiply"
+      },
+      "flash": {
+        "colour": "#ffffff",
+        "mode": "fill"
+      },
+      "frost": {
+        "colour": "#73eff7",
+        "mode": "multiply"
+      }
+    }
+  },
   "slime": {
     "anchor": [
       16,
@@ -153,25 +214,25 @@
     "display_scale": 2,
     "frames": {
       "burst_0": [
-        18,
-        67,
-        16,
-        16
-      ],
-      "burst_1": [
-        35,
-        67,
-        16,
-        16
-      ],
-      "burst_2": [
         52,
         67,
         16,
         16
       ],
-      "burst_3": [
+      "burst_1": [
         69,
+        67,
+        16,
+        16
+      ],
+      "burst_2": [
+        86,
+        67,
+        16,
+        16
+      ],
+      "burst_3": [
+        103,
         67,
         16,
         16

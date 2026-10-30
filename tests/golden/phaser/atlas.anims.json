@@ -3,6 +3,22 @@
     {
       "frames": [
         {
+          "duration": 100,
+          "frame": "orb/orb_0",
+          "key": "atlas"
+        },
+        {
+          "duration": 100,
+          "frame": "orb/orb_1",
+          "key": "atlas"
+        }
+      ],
+      "key": "orb/pulse",
+      "repeat": -1
+    },
+    {
+      "frames": [
+        {
           "duration": 80,
           "frame": "spark/burst_0",
           "key": "atlas"

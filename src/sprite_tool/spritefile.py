@@ -14,7 +14,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from .model import Anim, Canvas, Frame, Problem, Project, Sprite
+from .model import TINT_MODES, Anim, Canvas, Frame, Problem, Project, Sprite, Tint
+from .project import resolve_colour
 
 SUFFIX = ".sprite.toml"
 TRANSPARENT = "."
@@ -32,7 +33,9 @@ _TOP_LEVEL_KEYS = (
     "unoutlined",
     "points",
     "frame_points",
+    "tints",
 )
+_TINT_KEYS = ("colour", "mode")
 _FRAME_KEYS = ("from", "move", "mirror", "rows", "runs", "shift", "flip")
 _ANIM_KEYS = ("frames", "ms", "loop", "like", "rest")
 _MOVE_KEYS = ("rows", "cols", "by")
@@ -457,6 +460,7 @@ class _Parser:
         resolved = self._frames(data.get("frames"), canvas, points, frame_points)
         anims, likes, rests = self._anims(data.get("anim", {}), resolved, over is not None)
         swaps = self._variants(data.get("variants", {}))
+        tints = self._tints(data.get("tints", {}))
 
         frames = tuple(frame for frame in resolved.values() if frame is not None)
         if not frames:
@@ -491,6 +495,8 @@ class _Parser:
             unoutlined=unoutlined,
             anim_likes=likes,
             anim_rests=rests,
+            tints=tints,
+            tints_line=self.line("tints") if tints else 0,
         )
         return [sprite, *(_variant(sprite, name, swap) for name, swap in swaps.items())]
 
@@ -546,6 +552,47 @@ class _Parser:
             self.report("E001", f"{key} must be true or false", key)
             return True
         return value
+
+    # --- tints ---
+
+    def _tints(self, raw: Any) -> tuple[tuple[str, Tint], ...]:
+        """The good tints of `tints`, sorted by name, with an E110 for each that is not."""
+        if not isinstance(raw, dict):
+            self.report("E110", "tints must be a table of name = colour", "tints")
+            return ()
+        tints = {}
+        for name, value in raw.items():
+            # An inline table's keys are not found: then the line of `tints`.
+            line = self.line("tints", name) or self.line("tints") or 1
+            if not ID_RE.fullmatch(name):
+                self.report_at(line, 1, "E110", f"tints: bad tint name {name!r}: use a-z, 0-9 and _")
+                continue
+            fault, tint = self._tint(name, value)
+            if fault is not None:
+                self.report_at(line, 1, "E110", f"tints: tint {name!r} {fault}")
+            else:
+                tints[name] = tint
+        return tuple(sorted(tints.items()))
+
+    def _tint(self, name: str, value: Any) -> tuple[str | None, Tint | None]:
+        """One tint's value as a `Tint`, or what is wrong with it."""
+        mode = "multiply"
+        if isinstance(value, dict):
+            unknown = [key for key in value if key not in _TINT_KEYS]
+            if unknown:
+                return f"has unknown key {unknown[0]!r} (expected colour and mode)", None
+            if "colour" not in value:
+                return "needs a colour", None
+            mode = value.get("mode", mode)
+            if mode not in TINT_MODES:
+                return f"mode must be {' or '.join(map(repr, TINT_MODES))}", None
+            value = value["colour"]
+        elif not isinstance(value, str):
+            return "must be a colour or a table { colour = ..., mode = ... }", None
+        rgba = resolve_colour(value, self.project.palette) if isinstance(value, str) else None
+        if rgba is None:
+            return f"colour {value!r} must be #rrggbb, #rrggbbaa or a palette key", None
+        return None, Tint(rgba, mode, name)
 
     # --- points ---
 

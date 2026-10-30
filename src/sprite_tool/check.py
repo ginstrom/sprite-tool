@@ -22,7 +22,7 @@ MAX_E302_PER_FILE = 10
 
 
 def run(project: Project, sprites: Sequence[Sprite]) -> list[Problem]:
-    """E003, E106, E108, E201, E202, W001 to W005, W007 and W009 for the loaded sprites.
+    """E003, E106, E108, E201, E202, W001 to W005, W007, W009 and W010 for the loaded sprites.
 
     A variant gets only E003 and E201, so that a fault in its base sprite is
     not reported again for each variant. W006 and W008 are the parser's.
@@ -41,6 +41,7 @@ def run(project: Project, sprites: Sequence[Sprite]) -> list[Problem]:
                 problems.append(Problem(sprite.source, line, 1 if line else 0, "E108", fault))
             problems += _check_sprite(sprite, base)
             problems += _step_problems(sprite, base)
+            problems += _tint_problems(project, sprite)
         else:
             problems += _check_variant(sprite, originals.get((sprite.source, sprite.variant_of)), base)
     return problems
@@ -52,6 +53,37 @@ def _by_id(sprites: Sequence[Sprite]) -> dict[str, Sprite]:
     for sprite in sprites:
         by_id.setdefault(sprite.id, sprite)
     return by_id
+
+
+# --- tints ------------------------------------------------------------------
+
+# The most a colour's channels may differ (max minus min) in a sprite drawn to be tinted.
+TINT_CHROMA_LIMIT = 64
+
+
+def _chroma(rgba: tuple[int, int, int, int]) -> int:
+    return max(rgba[:3]) - min(rgba[:3])
+
+
+def _tint_problems(project: Project, sprite: Sprite) -> list[Problem]:
+    """W010 when a sprite with a multiply tint draws with a palette colour
+    whose chroma is over `TINT_CHROMA_LIMIT`: multiplying muddies it."""
+    if not any(tint.mode == "multiply" for _, tint in sprite.tints):
+        return []
+    used = {key for frame in sprite.frames for row in frame.rows for key in row}
+    coloured = [
+        key
+        for key, colour in project.palette.items()
+        if key in used and key != TRANSPARENT and _chroma(colour.rgba) > TINT_CHROMA_LIMIT
+    ]
+    if not coloured:
+        return []
+    message = (
+        f"tinted sprite draws with coloured keys {', '.join(coloured)} (chroma over {TINT_CHROMA_LIMIT});"
+        " multiplying muddies them: draw tinted art in greys"
+    )
+    line = sprite.tints_line
+    return [Problem(sprite.source, line, 1 if line else 0, "W010", message)]
 
 
 # --- layers -----------------------------------------------------------------

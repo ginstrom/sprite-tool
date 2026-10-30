@@ -28,7 +28,7 @@ PALETTE = {
     "w": Color(key="w", rgba=(255, 255, 255, 255), name=None),
 }
 
-SPRITE_IDS = ["arrow", "goblin", "ground_light", "slime", "spark", "warrior", "warrior_red"]
+SPRITE_IDS = ["arrow", "goblin", "ground_light", "orb", "slime", "spark", "warrior", "warrior_red"]
 
 # The example in the design, section 4.7.
 WARRIOR_TRES = """\
@@ -257,7 +257,9 @@ def test_index_has_canvas_facts_bounds_and_frames_for_every_sprite(demo, index):
         entry = index[sprite.id]
         regions = parse(files[f"{sprite.id}.tres"])["regions"]
         keys = ["anchor", "anims", "bounds", "canvas", "display_scale", "frames", "size"]
-        assert sorted(entry) == sorted(keys + (["points"] if any(frame.points for frame in sprite.frames) else []))
+        keys += ["points"] if any(frame.points for frame in sprite.frames) else []
+        keys += ["tints"] if sprite.tints else []
+        assert sorted(entry) == sorted(keys)
         assert entry["canvas"] == sprite.canvas.name
         assert entry["anchor"] == list(sprite.canvas.anchor)
         assert entry["display_scale"] == sprite.canvas.display_scale
@@ -292,7 +294,7 @@ def test_a14_units_and_the_tile_share_one_sheet_at_their_own_sizes(demo, index):
         for x, y, w, h in entry["frames"].values():
             assert x + w <= width and y + h <= height
             sizes.setdefault(sprite_id, set()).add((w, h))
-    for small in ("ground_light", "arrow", "spark"):
+    for small in ("ground_light", "arrow", "orb", "spark"):
         assert sizes.pop(small) == {(16, 16)}
     assert set().union(*sizes.values()) == {(32, 32)}
 
@@ -355,7 +357,7 @@ def test_build_writes_the_godot_target(tmp_path, capsys):
     )
 
     assert main(["build", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "built: 7 sprites, 12 frames, 1 target\n"
+    assert capsys.readouterr().out == "built: 8 sprites, 14 frames, 1 target\n"
     out = root / "out" / "sprites"
     assert sorted(path.name for path in out.iterdir()) == sorted(
         [MANIFEST_NAME, "units.json", "units.png", *(f"{sprite_id}.tres" for sprite_id in SPRITE_IDS)]
@@ -377,7 +379,7 @@ def test_godot_and_frames_targets_share_a_directory(tmp_path, capsys):
     )
 
     assert main(["build", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "built: 7 sprites, 12 frames, 2 targets\n"
+    assert capsys.readouterr().out == "built: 8 sprites, 14 frames, 2 targets\n"
     names = {path.name for path in (root / "out").iterdir()}
     assert {"atlas.png", "atlas.json", "warrior.tres", "warrior.png", "warrior__idle_0.png"} <= names
 
@@ -466,6 +468,7 @@ def test_a7_godot_loads_each_resource_as_sprite_frames(tmp_path, capsys):
         f"ANIM arrow default 1 1.0 true {region('arrow', 'main')}",
         f"ANIM goblin default 1 1.0 true {region('goblin', 'main')}",
         f"ANIM ground_light default 1 1.0 true {region('ground_light', 'main')}",
+        f"ANIM orb pulse 2 10.0 true {region('orb', 'orb_0')}",
         f"ANIM slime default 1 1.0 true {region('slime', 'main')}",
         f"ANIM spark burst 4 12.5 false {region('spark', 'burst_0')}",
         f"ANIM warrior idle 2 2.5 true {region('warrior', 'idle_0')}",

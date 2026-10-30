@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from sprite_tool.model import Frame, Sprite
+from sprite_tool.model import Frame, Sprite, hex_colour
 
 TRANSPARENT = "."
 
@@ -47,7 +47,8 @@ def sprite_entry(sprite: Sprite) -> dict[str, object]:
     so it does not move with the animation. `anims` has each frame's own
     length. `over` is there only for a layer: the id of the sprite it is
     drawn over. `points` is there only for a sprite with points: each frame
-    that has any, by frame name, with its points."""
+    that has any, by frame name, with its points. `tints` is there only for
+    a sprite with tints: each one's colour and mode, by name."""
     canvas = sprite.canvas
     entry: dict[str, object] = {
         "anchor": list(canvas.anchor),
@@ -68,4 +69,6 @@ def sprite_entry(sprite: Sprite) -> dict[str, object]:
     points = {frame.name: frame_points(frame) for frame in sprite.frames if frame.points}
     if points:
         entry["points"] = points
+    if sprite.tints:
+        entry["tints"] = {name: {"colour": hex_colour(tint.colour), "mode": tint.mode} for name, tint in sprite.tints}
     return entry

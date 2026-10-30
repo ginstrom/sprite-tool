@@ -213,7 +213,7 @@ def test_show_from_outside_the_project_takes_project(demo, capsys, tmp_path, mon
 def test_a31_an_unknown_id_names_the_known_ones(demo, capsys):
     assert show("slime", "nosuch") == 2
     captured = capsys.readouterr()
-    known = "(sprites: arrow, goblin, ground_light, sample_slime, slime, spark, warrior, warrior_red)"
+    known = "(sprites: arrow, goblin, ground_light, orb, sample_slime, slime, spark, warrior, warrior_red)"
     assert (captured.out, captured.err) == ("", f"error: unknown sprite id 'nosuch' {known}\n")
 
 

@@ -53,22 +53,22 @@ With [uv](https://docs.astral.sh/uv/), which fetches Python 3.11 or later if
 it is missing:
 
 ```sh
-uv tool install git+https://github.com/ginstrom/sprite-tool@v0.6.0
-sprite --version         # sprite 0.6.0
+uv tool install git+https://github.com/ginstrom/sprite-tool@v0.7.0
+sprite --version         # sprite 0.7.0
 ```
 
 Name a tag, as above, so that everyone on a game builds the same files; leave
-`@v0.6.0` off to follow `main`. To move to a newer release, run the command
+`@v0.7.0` off to follow `main`. To move to a newer release, run the command
 again with the new tag and `--force`. The tool is not on PyPI.
 
 Other ways to run it:
 
 ```sh
 # without installing, for example in CI
-uvx --from git+https://github.com/ginstrom/sprite-tool@v0.6.0 sprite build --check
+uvx --from git+https://github.com/ginstrom/sprite-tool@v0.7.0 sprite build --check
 
 # with pipx
-pipx install git+https://github.com/ginstrom/sprite-tool@v0.6.0
+pipx install git+https://github.com/ginstrom/sprite-tool@v0.7.0
 ```
 
 Install it as a tool, as above, and not as a dependency of a Python game. It
@@ -103,7 +103,7 @@ sprite init art          # the art project, in a directory of the game repositor
 
   ```yaml
   - uses: astral-sh/setup-uv@v6
-  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.6.0 sprite build --check --project art
+  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.7.0 sprite build --check --project art
   ```
 
 ## Quick start
@@ -142,7 +142,7 @@ the current directory.
 | `sprite guide` | Print the format reference, palette and canvas classes. |
 | `sprite new <id> --canvas <class> [--dir <subdir>] [--runs]` | Write a blank sprite file: a grid of dots, or with `--runs` a runs table to fill in. |
 | `sprite check [<file>...] [--canvas <class>]` | Check every sprite file, or the given sprite files and PNGs. |
-| `sprite preview [<id>...] [--grid] [--scale N\|display] [--on <tile-id>] [--sheet] [--anim <name>] [--points]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. With `--anim`, an animation as a strip and a GIF. `--points` marks named points. |
+| `sprite preview [<id>...] [--grid] [--scale N\|display] [--on <tile-id>] [--sheet] [--anim <name>] [--points] [--tint <colour>,... [--tint-mode fill]]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. With `--anim`, an animation as a strip and a GIF. `--points` marks named points. `--tint` draws each sprite under each colour. |
 | `sprite show <id>... [--frame <name>]... [--all] [--diff [<frame>]]` | Print a sprite's finished grid as text (see below), or with `--diff` only the rows one frame changes. Writes no file. |
 | `sprite build [--check] [--adopt [<id>...]]` | Check everything, then write every export target. |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. |
@@ -235,6 +235,24 @@ Release 0.6.0 added these:
   leading pixel `tip`, and make a one-shot effect an animation with
   `loop = false`. The demo has an arrow and a spark burst drawn this way.
 
+Release 0.7.0 added these:
+
+- **`tints`** at the top of a file names the colours a game draws the sprite
+  in, for an effect drawn once in greys and tinted at run time:
+  `tints = { fire = "#ff7a1a", frost = "C", flash = { colour = "#ffffff", mode = "fill" } }`.
+  A colour is `#rrggbb`, `#rrggbbaa` or a palette key; `mode` is `multiply`
+  (the default: each channel times the tint, as Phaser's `setTint`, Godot's
+  `modulate` and most engines draw it) or `fill` (every drawn pixel in the
+  colour: a hit flash). Variants have their base's tints. `preview` draws
+  each, the `frames` and `godot` indexes list them (see below), and `check`
+  warns (`W010`) when a sprite with a multiply tint draws with a strongly
+  coloured palette key (chroma, the largest channel minus the smallest, over
+  64), which multiplying muddies. A malformed tint is `E110`. Engines that
+  tint in linear light (Unity in linear colour space, Godot with HDR 2D)
+  draw mid-tones somewhat lighter than the preview.
+- **`sprite preview <id> --tint <colour>[,...]`** draws the sprite under each
+  colour, side by side and labelled; see Previews.
+
 ### The text view
 
 `sprite show` prints what a sprite file resolves to: the pixels `build` would
@@ -292,6 +310,8 @@ one kind does not overwrite another:
 | `sprite preview archer warrior --grid` | `archer+warrior.grid.png` |
 | `sprite preview`, or `--sheet` | `sheet.png` |
 | `sprite preview archer --anim idle` | `archer.anim-idle.png` and `archer.anim-idle.gif` |
+| `sprite preview orb --tint "#ff7a1a"` | `orb.plain.tint-ff7a1a.png` |
+| `sprite preview orb --tint "#ff7a1a,C,none"` | `orb.plain.tints.png` |
 
 `sprite preview archer` draws each frame enlarged by `[preview] scale`, and
 beside them the same frames at the class's `display_scale`, which is the size
@@ -309,6 +329,21 @@ frame's name and length under it, which is the form an agent can read. The
 GIF plays it, one file per id, for a person to watch. GIF counts time in
 hundredths of a second, so lengths are rounded to 10 ms and none is under
 20 ms.
+
+`--tint <colour>[,<colour>...]` draws each sprite once per colour, left to
+right, each panel labelled with its colour. A colour is `#rrggbb`,
+`#rrggbbaa`, a palette key or `none` (untinted). The tint multiplies each
+channel, alpha included, as games tint sprites; `--tint-mode fill` instead
+draws every drawn pixel in the colour, keeping its alpha. Only the sprite is
+tinted: not the tile under `--on`, a layer's base, the grid or the `--points`
+marker. With `--anim` the strip has a panel per tint and the GIF plays every
+tint side by side. One colour adds `.tint-<hex>` to the file name (`-fill`
+for fill, `.tint-none` for `none`), several add `.tints`.
+
+A sprite that declares `tints` is drawn in panels without the flag: untinted
+(`none`) first, then each tint by name, in the usual file. The contact sheet
+follows its cell with one cell per tint. `--tint` replaces the declared tints
+for that run.
 
 A sprite with only style problems (an outline or grounded fault, an empty
 frame) is still drawn: the problems are printed first, then the path, and the
@@ -404,7 +439,9 @@ layer has `"over": "<base id>"`. A sprite with named points has `points`, by
 frame then by name, each the centre of its pixel from the canvas's top left:
 `"points": {"idle_0": {"grip": [25.5, 18.5]}}`. A game places something at a
 point with `(point - anchor) * display_scale` from where it drew the sprite,
-negating x when it mirrors the sprite. A change
+negating x when it mirrors the sprite. A sprite with declared tints has
+`tints`, by name:
+`"tints": {"fire": {"colour": "#ff7a1a", "mode": "multiply"}}`. A change
 to `display_scale` or `anchor` in the config changes this file, and
 `sprite build --check` reports it until the project is rebuilt.
 
@@ -439,7 +476,7 @@ const { grip } = this.textures.getFrame('atlas', 'warrior/idle_0').customData.po
 
 Writes `<name>.png`, one `<id>.tres` (a `SpriteFrames` resource) per sprite,
 and `<name>.json`, an index of each sprite's canvas class, size, anchor,
-display scale, bounds and points (as in `sprites.json`) and frame rectangles
+display scale, bounds, points and tints (as in `sprites.json`) and frame rectangles
 on the sheet. `res_path` must be the `res://` path of the `out` directory,
 because each `.tres` refers to the sheet by that path.
 
@@ -562,6 +599,14 @@ writes into a scratch directory.
 A sprite file that uses `[points]`, `[frame_points]`, `mirror` or `rest` is an
 error on 0.5.0, so everyone working on the game needs the new version.
 
+## Upgrading from 0.6.0
+
+Projects load, check and build unchanged: a project with no `tints` builds to
+the same bytes and draws the same previews, so `sprite build --check` stays
+clean after moving the pin to `v0.7.0`. `W010` is reported only for sprites
+that declare tints. A sprite file that uses `tints` is an error on 0.6.0, so
+everyone working on the game needs the new version.
+
 ## More
 
 - [docs/designs/sprite-tool.md](docs/designs/sprite-tool.md) is the design:
@@ -572,9 +617,10 @@ error on 0.5.0, so everyone working on the game needs the new version.
   [docs/designs/text-view-and-runs-discovery.md](docs/designs/text-view-and-runs-discovery.md)
   of what 0.4.0 added,
   [docs/designs/layers-animation-and-export-selection.md](docs/designs/layers-animation-and-export-selection.md)
-  of what 0.5.0 added, and
+  of what 0.5.0 added,
   [docs/designs/points-and-effect-sprites.md](docs/designs/points-and-effect-sprites.md)
-  of what 0.6.0 added.
+  of what 0.6.0 added, and [docs/designs/tints.md](docs/designs/tints.md) of
+  what 0.7.0 added.
 - [AGENTS.md](AGENTS.md) covers working on the tool itself.
 
 MIT licence.
