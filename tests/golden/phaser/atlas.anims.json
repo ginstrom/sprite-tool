@@ -3,6 +3,32 @@
     {
       "frames": [
         {
+          "duration": 80,
+          "frame": "spark/burst_0",
+          "key": "atlas"
+        },
+        {
+          "duration": 80,
+          "frame": "spark/burst_1",
+          "key": "atlas"
+        },
+        {
+          "duration": 80,
+          "frame": "spark/burst_2",
+          "key": "atlas"
+        },
+        {
+          "duration": 40,
+          "frame": "spark/burst_3",
+          "key": "atlas"
+        }
+      ],
+      "key": "spark/burst",
+      "repeat": 0
+    },
+    {
+      "frames": [
+        {
           "duration": 400,
           "frame": "warrior/idle_0",
           "key": "atlas"

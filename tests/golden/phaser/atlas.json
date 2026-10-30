@@ -1,5 +1,35 @@
 {
   "frames": {
+    "arrow/main": {
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 100,
+        "y": 34
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "points": {
+        "tip": [
+          14.5,
+          8.5
+        ]
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 16,
+        "w": 16
+      },
+      "spriteSourceSize": {
+        "h": 16,
+        "w": 16,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
     "goblin/main": {
       "frame": {
         "h": 32,
@@ -28,8 +58,8 @@
       "frame": {
         "h": 16,
         "w": 16,
-        "x": 100,
-        "y": 34
+        "x": 1,
+        "y": 67
       },
       "pivot": {
         "x": 0.0,
@@ -72,6 +102,102 @@
       },
       "trimmed": false
     },
+    "spark/burst_0": {
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 18,
+        "y": 67
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 16,
+        "w": 16
+      },
+      "spriteSourceSize": {
+        "h": 16,
+        "w": 16,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
+    "spark/burst_1": {
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 35,
+        "y": 67
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 16,
+        "w": 16
+      },
+      "spriteSourceSize": {
+        "h": 16,
+        "w": 16,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
+    "spark/burst_2": {
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 52,
+        "y": 67
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 16,
+        "w": 16
+      },
+      "spriteSourceSize": {
+        "h": 16,
+        "w": 16,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
+    "spark/burst_3": {
+      "frame": {
+        "h": 16,
+        "w": 16,
+        "x": 69,
+        "y": 67
+      },
+      "pivot": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "rotated": false,
+      "sourceSize": {
+        "h": 16,
+        "w": 16
+      },
+      "spriteSourceSize": {
+        "h": 16,
+        "w": 16,
+        "x": 0,
+        "y": 0
+      },
+      "trimmed": false
+    },
     "warrior/idle_0": {
       "frame": {
         "h": 32,
@@ -82,6 +208,12 @@
       "pivot": {
         "x": 0.5,
         "y": 1.0
+      },
+      "points": {
+        "grip": [
+          25.5,
+          18.5
+        ]
       },
       "rotated": false,
       "sourceSize": {
@@ -107,6 +239,12 @@
         "x": 0.5,
         "y": 1.0
       },
+      "points": {
+        "grip": [
+          25.5,
+          18.5
+        ]
+      },
       "rotated": false,
       "sourceSize": {
         "h": 32,
@@ -130,6 +268,12 @@
       "pivot": {
         "x": 0.5,
         "y": 1.0
+      },
+      "points": {
+        "grip": [
+          25.5,
+          18.5
+        ]
       },
       "rotated": false,
       "sourceSize": {
@@ -155,6 +299,12 @@
         "x": 0.5,
         "y": 1.0
       },
+      "points": {
+        "grip": [
+          25.5,
+          18.5
+        ]
+      },
       "rotated": false,
       "sourceSize": {
         "h": 32,
@@ -174,7 +324,7 @@
     "image": "atlas.png",
     "scale": "1",
     "size": {
-      "h": 67,
+      "h": 84,
       "w": 128
     }
   }

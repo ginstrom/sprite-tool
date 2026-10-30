@@ -1,9 +1,15 @@
 {
   "targets": {
     "frames:sprites": [
+      "arrow.png",
       "goblin.png",
       "ground_light.png",
       "slime.png",
+      "spark.png",
+      "spark__burst_0.png",
+      "spark__burst_1.png",
+      "spark__burst_2.png",
+      "spark__burst_3.png",
       "sprites.json",
       "warrior.png",
       "warrior__idle_0.png",

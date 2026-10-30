@@ -1,8 +1,13 @@
 # sprite-tool 0.6: named points, effect sprites and editing frames
 
 - **Date:** 2026-10-30
-- **Status:** Ready for planning. No blocking questions; assumptions and
-  non-blocking questions are in [section 8](#8-open-questions-and-assumptions).
+- **Status:** Implemented in 0.6.0. Assumptions and non-blocking questions
+  are in [section 8](#8-open-questions-and-assumptions). Where the build
+  differs from the text below: the demo warrior's `grip` is `[25, 18]`, the
+  pixel of its fist on the blade (A58 and A65 use Yomi's `[25, 19]` as their
+  example); W008 is not reported for a point the frame's own
+  `[frame_points]` puts back; and `show --diff` on equal frames still lists
+  the frame's points after `no rows differ`.
 - **Amends:** [sprite-tool.md](sprite-tool.md) (the base design), after
   [feedback-fixes.md](feedback-fixes.md) (0.3),
   [text-view-and-runs-discovery.md](text-view-and-runs-discovery.md) (0.4) and

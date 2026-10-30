@@ -392,8 +392,8 @@ def _preview(args: argparse.Namespace) -> int:
                 known = ", ".join(sorted(anim.name for anim in sprite.anims)) or "none"
                 return _usage_error(f"sprite {name!r} has no animation {args.anim!r} (animations: {known})")
             base = bases.get(name)
-            strips.append(preview_module.anim_strip(project, sprite, anim, base, scale_of(name)))
-            frames = preview_module.anim_frames(project, sprite, anim, base, scale_of(name))
+            strips.append(preview_module.anim_strip(project, sprite, anim, base, scale_of(name), args.points))
+            frames = preview_module.anim_frames(project, sprite, anim, base, scale_of(name), args.points)
             gifs[f"{name}.anim-{args.anim}.gif"] = (frames, anim.loop)
         images[f"{stem}.anim-{args.anim}"] = preview_module.stack(project, strips)
     elif ids:
@@ -401,7 +401,9 @@ def _preview(args: argparse.Namespace) -> int:
             kind = f"on-{args.on}"
             # The game draws the pair with no common factor.
             scale = 1 if args.scale == DISPLAY_SCALE else args.scale or preview_module.ON_TILE_SCALE
-            parts = [preview_module.on_tile(project, by_id[name], by_id[args.on], scale, bases) for name in ids]
+            parts = [
+                preview_module.on_tile(project, by_id[name], by_id[args.on], scale, bases, args.points) for name in ids
+            ]
         else:
             kind = "grid" if args.grid else "plain"
             parts = [
@@ -413,6 +415,7 @@ def _preview(args: argparse.Namespace) -> int:
                     args.grid,
                     display=not args.grid,
                     base=bases.get(name),
+                    points=args.points,
                 )
                 for name in ids
             ]
@@ -437,6 +440,11 @@ def _preview(args: argparse.Namespace) -> int:
 def _show(args: argparse.Namespace) -> int:
     if args.all and args.frame:
         return _usage_error("--frame cannot be used with --all")
+    if args.diff is not None:
+        if args.all:
+            return _usage_error("--diff cannot be used with --all")
+        if len(set(args.frame or [])) != 1:
+            return _usage_error("--diff needs exactly one --frame")
     ids = list(dict.fromkeys(args.ids))
     loaded = _load_drawable(args, ids)
     if isinstance(loaded, int):
@@ -451,6 +459,17 @@ def _show(args: argparse.Namespace) -> int:
         for frame_name in wanted:
             if frame_name not in frames:
                 return _usage_error(f"sprite {name!r} has no frame {frame_name!r} (frames: {', '.join(frames)})")
+        if args.diff is not None:
+            frame = frames[wanted[0]]
+            other_name = args.diff or frame.parent
+            if other_name is None:
+                return _usage_error(
+                    f"frame {frame.name!r} of {name!r} has no from; name a frame to compare with: --diff <frame>"
+                )
+            if other_name not in frames:
+                return _usage_error(f"sprite {name!r} has no frame {other_name!r} (frames: {', '.join(frames)})")
+            blocks.append(textview.diff_text(sprite, frame, frames[other_name]))
+            continue
         if args.all:
             chosen = list(sprite.frames)
         else:
@@ -581,6 +600,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="draw this animation: its frames in play order with their lengths as <ids>.anim-<name>.png, "
         "and an animated <id>.anim-<name>.gif for each id",
     )
+    preview.add_argument(
+        "--points", action="store_true", help="mark each named point's pixel in magenta (#ff00ff)"
+    )
     preview.add_argument("--sheet", action="store_true", help="also write the contact sheet, sheet.png")
 
     show = commands.add_parser("show", parents=[in_project], help="print a sprite's finished grid as text")
@@ -592,6 +614,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="frame to print; may be repeated (default: the default frame)",
     )
     show.add_argument("--all", action="store_true", help="print every frame, in file order")
+    show.add_argument(
+        "--diff",
+        nargs="?",
+        const="",
+        metavar="<frame>",
+        help="with one --frame: print only the rows that differ from this frame (default: its from)",
+    )
 
     build = commands.add_parser("build", parents=[in_project], help="check everything, then write every export target")
     build.add_argument("--check", action="store_true", help="write nothing; exit 1 if generated files are missing or stale")

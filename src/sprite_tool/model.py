@@ -42,6 +42,9 @@ class Frame:
     origin as it was.
     lost: for each `shift` or `move` that dropped drawn pixels off the canvas,
     its description (`"shift [0, 1]"`) and the count.
+    points: the frame's named points, `(name, (col, row))`, sorted by name.
+    points_lost: for each point this frame's own operations took off the
+    canvas, the operation's description and the point's name.
     """
 
     name: str
@@ -51,13 +54,17 @@ class Frame:
     parent: str | None = None
     origins: tuple[tuple[tuple[int, int] | None, ...], ...] | None = None
     lost: tuple[tuple[str, int], ...] = ()
+    points: tuple[tuple[str, tuple[int, int]], ...] = ()
+    points_lost: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
 class Anim:
     """`durations` has the length in ms of each entry of `frames`; left empty,
     every entry gets `ms`. `line` is the file line of the animation, 0 when
-    unknown; it is not part of what makes two animations equal.
+    unknown; it is not part of what makes two animations equal. `rest`: a
+    layer's `rest = true`, its default frame held for as long as its base's
+    animation of the same name plays.
     """
 
     name: str
@@ -66,6 +73,7 @@ class Anim:
     loop: bool
     durations: tuple[int, ...] = ()
     line: int = field(default=0, compare=False)
+    rest: bool = False
 
     def __post_init__(self) -> None:
         if not self.durations:
@@ -86,6 +94,7 @@ class Sprite:
     unoutlined: palette keys that take no outline.
     anim_likes: animation name, sprite id and file line of each `like` that
     `spritefile.load_all` has not resolved (yet, or because it failed).
+    anim_rests: animation name and file line of each `rest = true` not resolved.
     """
 
     id: str
@@ -102,6 +111,7 @@ class Sprite:
     over_line: int = 0
     unoutlined: frozenset[str] = frozenset()
     anim_likes: tuple[tuple[str, str, int], ...] = ()
+    anim_rests: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)

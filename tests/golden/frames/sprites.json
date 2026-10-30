@@ -1,4 +1,43 @@
 {
+  "arrow": {
+    "anchor": [
+      8,
+      8
+    ],
+    "anims": {},
+    "bounds": [
+      0,
+      7,
+      15,
+      3
+    ],
+    "canvas": "effect",
+    "display_scale": 2,
+    "file": "arrow.png",
+    "frames": {
+      "main": {
+        "bounds": [
+          0,
+          7,
+          15,
+          3
+        ],
+        "file": "arrow.png"
+      }
+    },
+    "points": {
+      "main": {
+        "tip": [
+          14.5,
+          8.5
+        ]
+      }
+    },
+    "size": [
+      16,
+      16
+    ]
+  },
   "goblin": {
     "anchor": [
       16,
@@ -92,6 +131,86 @@
       32
     ]
   },
+  "spark": {
+    "anchor": [
+      8,
+      8
+    ],
+    "anims": {
+      "burst": {
+        "frames": [
+          {
+            "frame": "burst_0",
+            "ms": 80
+          },
+          {
+            "frame": "burst_1",
+            "ms": 80
+          },
+          {
+            "frame": "burst_2",
+            "ms": 80
+          },
+          {
+            "frame": "burst_3",
+            "ms": 40
+          }
+        ],
+        "loop": false
+      }
+    },
+    "bounds": [
+      1,
+      1,
+      14,
+      14
+    ],
+    "canvas": "effect",
+    "display_scale": 2,
+    "file": "spark.png",
+    "frames": {
+      "burst_0": {
+        "bounds": [
+          6,
+          6,
+          4,
+          4
+        ],
+        "file": "spark__burst_0.png"
+      },
+      "burst_1": {
+        "bounds": [
+          5,
+          5,
+          6,
+          6
+        ],
+        "file": "spark__burst_1.png"
+      },
+      "burst_2": {
+        "bounds": [
+          3,
+          3,
+          10,
+          10
+        ],
+        "file": "spark__burst_2.png"
+      },
+      "burst_3": {
+        "bounds": [
+          1,
+          1,
+          14,
+          14
+        ],
+        "file": "spark__burst_3.png"
+      }
+    },
+    "size": [
+      16,
+      16
+    ]
+  },
   "warrior": {
     "anchor": [
       16,
@@ -139,6 +258,20 @@
           31
         ],
         "file": "warrior__idle_1.png"
+      }
+    },
+    "points": {
+      "idle_0": {
+        "grip": [
+          25.5,
+          18.5
+        ]
+      },
+      "idle_1": {
+        "grip": [
+          25.5,
+          18.5
+        ]
       }
     },
     "size": [
@@ -193,6 +326,20 @@
           31
         ],
         "file": "warrior_red__idle_1.png"
+      }
+    },
+    "points": {
+      "idle_0": {
+        "grip": [
+          25.5,
+          18.5
+        ]
+      },
+      "idle_1": {
+        "grip": [
+          25.5,
+          18.5
+        ]
       }
     },
     "size": [

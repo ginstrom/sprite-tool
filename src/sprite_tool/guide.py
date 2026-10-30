@@ -11,6 +11,8 @@ from .model import Canvas, ExportTarget, Project, hex_colour
 # A complete sprite file. It checks clean on a 6x4 canvas whose palette has k, w, b, B, r and R.
 EXAMPLE = '''\
 canvas = "unit"            # a canvas class from the list below
+[points]                   # optional: named pixels, [col, row], that a game reads (see POINTS)
+eye = [2, 1]
 [frames]                   # the first frame is the default frame; names match [a-z0-9_]+
 idle_0 = """
 .kkk..
@@ -21,10 +23,11 @@ kbBbk.
 [frames.idle_1]            # a derived frame; its operations apply in this order:
 from = "idle_0"            #    optional: the frame to start from; without it, a blank canvas
 move = { rows = [1, 1], by = [0, 1] } # 1. move a rectangle (rows, cols or both) by [dx, dy]
-rows = { 1 = "kbbbk." }    # 2. replace whole rows, by row index
-runs = { 2 = [[2, "B"]] }  # 3. replace pixels: row = [[column, "pixels"], ...]; '.' erases
-shift = [1, 0]             # 4. move the whole frame by [dx, dy]
-flip = true                # 5. mirror left to right
+mirror = { cols = [0, 4] } # 2. mirror a rectangle (rows, cols or both) left to right, in place
+rows = { 1 = "kbbbk." }    # 3. replace whole rows, by row index
+runs = { 2 = [[2, "B"]] }  # 4. replace pixels: row = [[column, "pixels"], ...]; '.' erases
+shift = [1, 0]             # 5. move the whole frame by [dx, dy]
+flip = true                # 6. mirror the whole frame left to right
 [frames.idle_2.runs]       # a whole frame as runs, no grid: one line per row that has pixels
 0 = [[1, "kkk"]]           #    row = [[column, "pixels"], ...]; the rest stays transparent
 1 = [[0, "kbwbk"]]
@@ -52,12 +55,27 @@ Sprite files may be anywhere in the project; `sprite new` writes to the root unl
 `build = false` at the top of a file: the sprite is checked and previewed, never exported.
 `move` takes its rectangle (`rows` and `cols` are `[first, last]`) whole, transparent pixels too,
 and leaves transparency behind; a list of moves applies in order. `check` warns when `move` or
-`shift` pushes pixels off the canvas.
+`shift` pushes pixels off the canvas. `mirror` reverses each row of its rectangle about the
+rectangle's centre column; patch what is not symmetric with `rows` or `runs`. On a 32x32 unit:
+move = { rows = [27, 30], cols = [10, 15], by = [-1, -2] }  # lift a foot: only that rectangle moves
+mirror = { rows = [25, 31], cols = [10, 21] }               # mirror the legs, not the body
 `over = "<id>"` at the top of a file: the sprite is a layer, drawn over that sprite (its base) of
 the same class. The outline rule then counts the base's pixels as drawn, each frame over the base
 frame of the same name, else its default frame; grounded does not apply; previews draw the pair.
 `[anim.<name>]` holding only `like = "<id>"` plays as that sprite's animation of the same name:
 its frame names, lengths and looping. The frames are this sprite's own.
+`[anim.<name>]` holding only `rest = true`, in a layer: its default frame, held as long as the
+base's animation of that name plays. check warns (W009) of a base animation a layer neither has
+nor rests through.
+POINTS  `[points]` names pixels of the drawing (`grip = [25, 18]`), which every frame has. A
+derived frame's move, mirror, shift and flip carry each point as they carry the pixel under it;
+one carried off the canvas is dropped (W008). `[frame_points.<frame>]` sets that frame's own, in
+its final coordinates, and frames derived from it inherit them. A point is exported as its pixel's
+centre from the canvas's top left (`[25.5, 18.5]`): Phaser has it as the frame's
+`customData.points`, and the JSON index under `points` by frame. `sprite show` lists them.
+EFFECTS  arrows, bolts, sparks: a class anchored at its centre, with no outline or grounded rule.
+Draw the effect pointing right; the game turns it about the anchor by its angle of flight. Name
+its leading pixel `tip`. A one-shot effect is an animation with `loop = false`.
 """
 
 _RULES = """\
@@ -88,9 +106,12 @@ sprite new <id> --canvas <class> [--dir <subdir>] [--runs]
 sprite check [<file>...]                            list problems; fix them until it prints `ok`
 sprite show <id>... [--frame <name>] [--all]        print the finished grid as text, with row and
                                                     column numbers; the default frame unless told
-sprite preview <id>... [--grid]                     write one image of those sprites and print its
+sprite show <id> --frame <name> --diff [<other>]    only the rows that differ from its from frame
+                                                    (or <other>), with ^ under each change
+sprite preview <id>... [--grid] [--points]          write one image of those sprites and print its
                                                     path; it is drawn even with outline problems;
-                                                    --grid labels every 4th row and column
+                                                    --grid labels every 4th row and column;
+                                                    --points marks named points in magenta
 sprite preview <id> --on <other-id>                 the sprite standing on another sprite, as in
                                                     the game
 sprite preview <id>... --anim <name>                the animation's frames in play order with their

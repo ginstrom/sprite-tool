@@ -258,7 +258,7 @@ REFUSALS = {
     "upper case id": (["--canvas", "unit", "--id", "Hero"], "sprite id 'Hero' must match [a-z0-9_]+"),
     "id with a path": (["--canvas", "unit", "--id", "units/hero"], "sprite id 'units/hero' must match [a-z0-9_]+"),
     "empty id": (["--canvas", "unit", "--id", ""], "sprite id '' must match [a-z0-9_]+"),
-    "unknown class": (["--canvas", "boss"], "unknown canvas class 'boss' (expected one of unit, tile)"),
+    "unknown class": (["--canvas", "boss"], "unknown canvas class 'boss' (expected one of unit, tile, effect)"),
 }
 
 

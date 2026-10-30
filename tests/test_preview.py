@@ -332,13 +332,18 @@ def test_sheet_groups_by_canvas_class_and_sorts_by_id(loaded):
     project, sprites = loaded
     image = preview.contact_sheet(project, list(sprites.values())[::-1])
     # Units: five cells as wide as the label `sample_slime`. Tile: one as wide as `ground_light`.
-    unit_w, tile_w = 12 * CHAR_WIDTH, 12 * CHAR_WIDTH
-    assert image.size == (2 * MARGIN + 5 * unit_w + 4 * GAP, 2 * MARGIN + 2 * CELL_H + GAP)
+    # Effects: two cells as wide as the art, 16 pixels at 2x, under a shorter row.
+    unit_w, tile_w, effect_w = 12 * CHAR_WIDTH, 12 * CHAR_WIDTH, 32
+    effect_h = 32 + LABEL_GAP + LINE_HEIGHT
+    assert image.size == (2 * MARGIN + 5 * unit_w + 4 * GAP, 2 * MARGIN + 2 * CELL_H + effect_h + 2 * GAP)
     for column, sprite_id in enumerate(UNIT_IDS):
         at = (MARGIN + column * (unit_w + GAP) + (unit_w - 64) // 2, MARGIN)
         assert art_at(project, sprites[sprite_id], 2, image, at), sprite_id
     at = (MARGIN + (tile_w - 64) // 2, MARGIN + CELL_H + GAP)
     assert art_at(project, sprites["ground_light"], 4, image, at)
+    for column, sprite_id in enumerate(["arrow", "spark"]):
+        at = (MARGIN + column * (effect_w + GAP), MARGIN + 2 * (CELL_H + GAP))
+        assert art_at(project, sprites[sprite_id], 2, image, at), sprite_id
 
 
 def test_sheet_draws_each_id_under_its_sprite(loaded):
@@ -668,7 +673,7 @@ def test_a_bad_palette_prints_its_problems_and_writes_nothing(demo, capsys):
 def test_unknown_id_is_a_usage_error(demo, capsys, argv, name):
     assert run(*argv) == 2
     captured = capsys.readouterr()
-    known = "(sprites: goblin, ground_light, sample_slime, slime, warrior, warrior_red)"
+    known = "(sprites: arrow, goblin, ground_light, sample_slime, slime, spark, warrior, warrior_red)"
     assert (captured.out, captured.err) == ("", f"error: unknown sprite id '{name}' {known}\n")
     assert previews(demo) == []
 
@@ -685,3 +690,55 @@ def test_a_preview_directory_that_cannot_be_made_is_exit_2(demo, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err.startswith("error: cannot write preview: ")
+
+
+# --- 0.6: --points --------------------------------------------------------------
+
+
+def test_a66_drawn_marks_each_point_pixel_and_nothing_else(loaded):
+    project, sprites = loaded
+    warrior = sprites["warrior"]
+    plain = preview.drawn(project, warrior, warrior.frames[0])
+    marked = preview.drawn(project, warrior, warrior.frames[0], points=True)
+    differ = [(x, y) for y in range(32) for x in range(32) if plain.getpixel((x, y)) != marked.getpixel((x, y))]
+    assert differ == [(25, 18)]
+    assert marked.getpixel((25, 18)) == preview.POINT_MARKER
+
+
+def preview_file(argv: list[str], capsys) -> Image.Image:
+    assert main(["preview", *argv]) == 0
+    (path,) = capsys.readouterr().out.split()
+    return Image.open(path).convert("RGBA")
+
+
+def test_a66_preview_points_marks_the_point_in_every_frame_tile(demo, capsys):
+    scale = 3
+    plain = preview_file(["warrior", "--scale", str(scale)], capsys)
+    marked = preview_file(["warrior", "--scale", str(scale), "--points"], capsys)
+    assert plain.size == marked.size
+    tile = 32 * scale + GAP
+    # Both frames, in the warrior's row and its red variant's.
+    for column in range(2):
+        for row in range(2):
+            x, y = MARGIN + column * tile + 25 * scale, MARGIN + row * tile + 18 * scale
+            assert marked.getpixel((x, y)) == preview.POINT_MARKER
+            assert plain.getpixel((x, y)) != preview.POINT_MARKER
+    changed = {
+        marked.getpixel((x, y))
+        for y in range(marked.height)
+        for x in range(marked.width)
+        if marked.getpixel((x, y)) != plain.getpixel((x, y))
+    }
+    assert changed == {preview.POINT_MARKER}
+
+
+def test_a66_without_points_the_preview_has_no_marker(demo, capsys):
+    image = preview_file(["warrior", "arrow"], capsys)
+    assert preview.POINT_MARKER not in set(image.get_flattened_data())
+
+
+@pytest.mark.parametrize("flags", [["--grid"], ["--on", "ground_light"], ["--anim", "idle"]])
+def test_points_combine_with_grid_on_and_anim(demo, capsys, flags):
+    assert main(["preview", "warrior", "--points", *flags]) == 0
+    first = capsys.readouterr().out.split()[0]
+    assert preview.POINT_MARKER in set(Image.open(first).convert("RGBA").get_flattened_data())

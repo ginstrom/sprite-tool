@@ -1,0 +1,11 @@
+# An effect: drawn pointing right, turned by the game about the anchor (the centre).
+# `tip` is the leading pixel, where the arrow strikes.
+canvas = "effect"
+
+[points]
+tip = [14, 8]
+
+[frames.main.runs]
+7 = [[0, "rr"], [12, "d"]]
+8 = [[1, "rr"], [3, "ooooooooo"], [12, "ddl"]]
+9 = [[0, "rr"], [12, "d"]]

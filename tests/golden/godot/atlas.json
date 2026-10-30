@@ -1,4 +1,39 @@
 {
+  "arrow": {
+    "anchor": [
+      8,
+      8
+    ],
+    "anims": {},
+    "bounds": [
+      0,
+      7,
+      15,
+      3
+    ],
+    "canvas": "effect",
+    "display_scale": 2,
+    "frames": {
+      "main": [
+        100,
+        34,
+        16,
+        16
+      ]
+    },
+    "points": {
+      "main": {
+        "tip": [
+          14.5,
+          8.5
+        ]
+      }
+    },
+    "size": [
+      16,
+      16
+    ]
+  },
   "goblin": {
     "anchor": [
       16,
@@ -42,8 +77,8 @@
     "display_scale": 4,
     "frames": {
       "main": [
-        100,
-        34,
+        1,
+        67,
         16,
         16
       ]
@@ -78,6 +113,73 @@
     "size": [
       32,
       32
+    ]
+  },
+  "spark": {
+    "anchor": [
+      8,
+      8
+    ],
+    "anims": {
+      "burst": {
+        "frames": [
+          {
+            "frame": "burst_0",
+            "ms": 80
+          },
+          {
+            "frame": "burst_1",
+            "ms": 80
+          },
+          {
+            "frame": "burst_2",
+            "ms": 80
+          },
+          {
+            "frame": "burst_3",
+            "ms": 40
+          }
+        ],
+        "loop": false
+      }
+    },
+    "bounds": [
+      1,
+      1,
+      14,
+      14
+    ],
+    "canvas": "effect",
+    "display_scale": 2,
+    "frames": {
+      "burst_0": [
+        18,
+        67,
+        16,
+        16
+      ],
+      "burst_1": [
+        35,
+        67,
+        16,
+        16
+      ],
+      "burst_2": [
+        52,
+        67,
+        16,
+        16
+      ],
+      "burst_3": [
+        69,
+        67,
+        16,
+        16
+      ]
+    },
+    "size": [
+      16,
+      16
     ]
   },
   "warrior": {
@@ -121,6 +223,20 @@
         32,
         32
       ]
+    },
+    "points": {
+      "idle_0": {
+        "grip": [
+          25.5,
+          18.5
+        ]
+      },
+      "idle_1": {
+        "grip": [
+          25.5,
+          18.5
+        ]
+      }
     },
     "size": [
       32,
@@ -168,6 +284,20 @@
         32,
         32
       ]
+    },
+    "points": {
+      "idle_0": {
+        "grip": [
+          25.5,
+          18.5
+        ]
+      },
+      "idle_1": {
+        "grip": [
+          25.5,
+          18.5
+        ]
+      }
     },
     "size": [
       32,

@@ -1,6 +1,9 @@
 # A unit facing right. `idle_1` is `idle_0` with one row replaced (a blink).
 canvas = "unit"
 
+[points]
+grip = [25, 18]          # [col, row]: the fist on the spear, which a game turns a weapon about
+
 [frames]
 idle_0 = """
 ................................

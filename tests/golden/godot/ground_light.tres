@@ -4,7 +4,7 @@
 
 [sub_resource type="AtlasTexture" id="ground_light_main"]
 atlas = ExtResource("1")
-region = Rect2(100, 34, 16, 16)
+region = Rect2(1, 67, 16, 16)
 
 [resource]
 animations = [{

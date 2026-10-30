@@ -629,7 +629,7 @@ def test_table_with_none_of_from_rows_and_runs_is_e001(project):
     (sprite,), problems = derived(project, "shift = [1, 0]\n")
 
     assert [format_problem(problem, project.root) for problem in problems] == [
-        "hero.sprite.toml:10:1: E001 frame 'next': needs from, rows, runs or move"
+        "hero.sprite.toml:10:1: E001 frame 'next': needs from, rows, runs, move or mirror"
     ]
     assert [frame.name for frame in sprite.frames] == ["idle_0"]
 

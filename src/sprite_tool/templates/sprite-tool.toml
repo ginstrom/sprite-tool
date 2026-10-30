@@ -16,6 +16,11 @@ size = [16, 16]
 anchor = [0, 0]
 display_scale = 4
 
+[canvas.effect]          # arrows, bolts, sparks: anything a game moves, turns or spawns
+size = [16, 16]
+anchor = [8, 8]          # the centre: the game turns the sprite about it; draw it pointing right
+display_scale = 2
+
 [preview]
 scale = 6                # default upscale for `sprite preview`
 background = "#3a3a3a"

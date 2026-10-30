@@ -1,0 +1,37 @@
+# A one-shot burst about the anchor: the game plays `burst` once and then removes it.
+canvas = "effect"
+
+[frames.burst_0.runs]
+6 = [[7, "yy"]]
+7 = [[6, "ywwy"]]
+8 = [[6, "ywwy"]]
+9 = [[7, "yy"]]
+
+[frames.burst_1.runs]
+5 = [[7, "yy"]]
+6 = [[6, "yooy"]]
+7 = [[5, "yowwoy"]]
+8 = [[5, "yowwoy"]]
+9 = [[6, "yooy"]]
+10 = [[7, "yy"]]
+
+[frames.burst_2.runs]
+3 = [[4, "o"], [7, "yy"], [11, "o"]]
+4 = [[5, "y"], [10, "y"]]
+7 = [[3, "y"], [7, "ww"], [12, "y"]]
+8 = [[3, "y"], [7, "ww"], [12, "y"]]
+11 = [[5, "y"], [10, "y"]]
+12 = [[4, "o"], [7, "yy"], [11, "o"]]
+
+[frames.burst_3.runs]
+1 = [[7, "oo"]]
+2 = [[2, "o"], [13, "o"]]
+7 = [[1, "o"], [14, "o"]]
+8 = [[1, "o"], [14, "o"]]
+13 = [[2, "o"], [13, "o"]]
+14 = [[7, "oo"]]
+
+[anim.burst]
+frames = ["burst_0", "burst_1", "burst_2", { frame = "burst_3", ms = 40 }]
+ms = 80
+loop = false

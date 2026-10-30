@@ -15,7 +15,10 @@ its plan. Release 0.4 amended the design again:
 Release 0.5 amended it once more:
 [docs/designs/layers-animation-and-export-selection.md](docs/designs/layers-animation-and-export-selection.md)
 (what a target exports, `move`, layers with `over`, frame lengths, `like`,
-`preview --anim` and `unoutlined`).
+`preview --anim` and `unoutlined`). Release 0.6 amended it again:
+[docs/designs/points-and-effect-sprites.md](docs/designs/points-and-effect-sprites.md)
+(named points, the `effect` class, `mirror`, `show --diff` and a layer's
+`rest = true`).
 
 ## Commands
 
@@ -42,7 +45,8 @@ Everything runs through `uv`.
   `init` prints a second line, the note for agents (`cli.agent_note`), and
   `build --adopt` prints one `adopted <path>` line per file it took over,
   before the summary. `guide` and `show` print their product and no summary:
-  on success `show` prints the grid blocks and nothing else. `preview --anim`
+  on success `show` prints the grid blocks (or with `--diff` the diff blocks)
+  and nothing else. `preview --anim`
   prints one path per file written: the strip, then one GIF per id. Each problem is one line on
   stdout. No colour, banners or progress output. Exit codes: `0` success, `1`
   check failures, `2` usage or config error (message on stderr as
@@ -102,16 +106,20 @@ fails when a fresh build of the demo differs from it by a byte.
 - `src/sprite_tool/spritefile.py`: parses `*.sprite.toml` into sprites, and
   reports what it cannot parse. `_Derived._transform` runs a frame table's
   operations on the rows and, with the same code, on a grid of positions,
-  which is where `Frame.origins` comes from. `load_all` resolves each
-  animation's `like` after every file is parsed (`_resolve_likes`). `over` is
-  only recorded here: whether it is good needs every sprite, so that is
-  `check`'s.
+  which is where `Frame.origins` comes from; `_Derived.carry` moves named
+  points through the same operations in the same order, and a test holds it
+  to `origins`. `load_all` resolves each animation's `like` after every file
+  is parsed (`_resolve_likes`), then each layer's `rest = true`
+  (`_resolve_rests`). `over` is only recorded here: whether it is good needs
+  every sprite, so that is `check`'s. E109 and W008 (points) are reported
+  here too.
 - `src/sprite_tool/check.py`: checks on resolved sprites (`run`) and on PNG
   files (`check_png`). `layer_base`, `bases` and `paired` say what a layer is
   drawn over and which base frame goes with which of its frames; the checks
   and the previews both use them. `is_built` is which sprites a build
   exports at all. A derived frame's inherited outline faults are found
   through `Frame.origins`, so a new frame operation needs no change here.
+  `_step_problems` is W007 and W009, a layer's animations against its base's.
 - `src/sprite_tool/render.py`: frames to RGBA images. `png_bytes` is the only
   place PNGs are encoded for export.
 - `src/sprite_tool/pack.py`: the shelf packer. Works on sizes only.
@@ -119,7 +127,9 @@ fails when a fresh build of the demo differs from it by a byte.
   shared by the atlas targets.
 - `src/sprite_tool/export/index.py`: `bounds` and `union`, the box of a
   frame's drawn pixels, and `sprite_entry`, the keys the `frames` and `godot`
-  indexes share (`anims` and a layer's `over` among them). Bounds come from the text rows, not from images.
+  indexes share (`anims`, a layer's `over` and a sprite's `points` among
+  them), and `frame_points`, a frame's points as exported, which the Phaser
+  atlas uses too. Bounds come from the text rows, not from images.
 - `src/sprite_tool/export/__init__.py`: `select`, which sprites a target
   exports (`canvases`, `include`, `exclude`), used by `build` and by the
   W004 and W005 checks; and `EXPORTERS`, one exporter per target
@@ -134,11 +144,13 @@ fails when a fresh build of the demo differs from it by a byte.
   (`sprite_preview`, `on_tile`, `contact_sheet`, and `stack` for several
   sprites in one image; `anim_strip`, `anim_frames` and `save_gif` for
   `--anim`). `drawn` is the one place a frame becomes a preview image, over
-  its base frame when the sprite is a layer. Layout sizes are named
+  its base frame when the sprite is a layer, and with its points marked in
+  `POINT_MARKER` for `--points`. Layout sizes are named
   constants, which the tests use. Previews are written straight to
   `.preview/`, not through the manifest.
 - `src/sprite_tool/textview.py`: `frame_text`, the block `sprite show` prints
-  for one frame. It prints `Frame.rows` unchanged and imports no image code.
+  for one frame, and `diff_text`, the block for `--diff`. It prints
+  `Frame.rows` unchanged and imports no image code.
 - `src/sprite_tool/importer.py`: `import_png` and `to_rows`, a PNG to the grid
   of a sprite file for `sprite import`, and `sprite_text`, the file it writes.
 - `src/sprite_tool/manifest.py`: the only code that creates, overwrites or

@@ -174,7 +174,7 @@ def test_a42_a_bad_move_is_one_line_naming_the_frame(project, move, code, messag
 
 def test_a_frame_table_with_only_a_bad_field_still_says_what_it_needs(project):
     _, problems = moved(project, "flip = true\n")
-    assert [problem.message for problem in problems] == ["frame 'next': needs from, rows, runs or move"]
+    assert [problem.message for problem in problems] == ["frame 'next': needs from, rows, runs, move or mirror"]
 
 
 # --- A43: pixels pushed off the canvas ----------------------------------------

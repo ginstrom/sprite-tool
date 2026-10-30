@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from sprite_tool.model import Sprite
+from sprite_tool.model import Frame, Sprite
 
 TRANSPARENT = "."
 
@@ -32,11 +32,22 @@ def union(boxes: Iterable[Sequence[int]]) -> list[int]:
     return [left, top, right - left, bottom - top]
 
 
+def point_json(col: int, row: int) -> list[float]:
+    """A point as exported: the centre of its pixel, in canvas pixels from the top left."""
+    return [col + 0.5, row + 0.5]
+
+
+def frame_points(frame: Frame) -> dict[str, list[float]]:
+    """A frame's points by name, as exported."""
+    return {name: point_json(col, row) for name, (col, row) in frame.points}
+
+
 def sprite_entry(sprite: Sprite) -> dict[str, object]:
     """The keys every index has for a sprite. `bounds` covers all its frames,
     so it does not move with the animation. `anims` has each frame's own
     length. `over` is there only for a layer: the id of the sprite it is
-    drawn over."""
+    drawn over. `points` is there only for a sprite with points: each frame
+    that has any, by frame name, with its points."""
     canvas = sprite.canvas
     entry: dict[str, object] = {
         "anchor": list(canvas.anchor),
@@ -54,4 +65,7 @@ def sprite_entry(sprite: Sprite) -> dict[str, object]:
     }
     if sprite.over is not None:
         entry["over"] = sprite.over
+    points = {frame.name: frame_points(frame) for frame in sprite.frames if frame.points}
+    if points:
+        entry["points"] = points
     return entry

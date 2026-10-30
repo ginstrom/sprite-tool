@@ -1,4 +1,5 @@
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -91,7 +92,9 @@ def test_the_rows_are_the_frames_rows_and_no_line_has_trailing_whitespace(loaded
             text = frame_text(sprite, frame)
             lines = text.splitlines()
             assert text.endswith("\n") and all(line == line.rstrip() for line in lines)
-            assert tuple(line.split()[1] for line in lines[3:]) == frame.rows
+            height = len(frame.rows)
+            assert tuple(line.split()[1] for line in lines[3 : 3 + height]) == frame.rows
+            assert lines[3 + height :] == [f"point {name} {col},{row}" for name, (col, row) in frame.points]
             assert lines[0] == f"{sprite.id} {frame.name}  {sprite.canvas.name} {sprite.canvas.width}x{sprite.canvas.height}"
 
 
@@ -147,12 +150,13 @@ def test_a30_only_the_default_frame_is_shown_unless_told(demo, capsys, loaded):
     assert show("warrior") == 0
     (only,) = blocks(capsys.readouterr().out)
     assert only[0] == "warrior idle_0  unit 32x32"
-    assert tuple(line[4:] for line in only[3:]) == warrior["idle_0"]
+    assert tuple(line[4:] for line in only[3:-1]) == warrior["idle_0"]
+    assert only[-1] == "point grip 25,18"
 
     assert show("warrior", "--frame", "idle_1") == 0
     (only,) = blocks(capsys.readouterr().out)
     assert only[0] == "warrior idle_1  unit 32x32"
-    assert tuple(line[4:] for line in only[3:]) == warrior["idle_1"]
+    assert tuple(line[4:] for line in only[3:-1]) == warrior["idle_1"]
     assert warrior["idle_1"] != warrior["idle_0"]
 
 
@@ -161,7 +165,7 @@ def test_a30_several_frames_and_all(demo, capsys):
     out = capsys.readouterr().out
     assert [block[0].split()[1] for block in blocks(out)] == ["idle_1", "idle_0"]
     # One blank line between blocks, none at the end.
-    assert out.count("\n\n") == 1 and out.endswith(".\n") and not out.endswith("\n\n")
+    assert out.count("\n\n") == 1 and out.endswith("point grip 25,18\n") and not out.endswith("\n\n")
 
     assert show("warrior", "--all") == 0
     assert [block[0].split("  ")[0] for block in blocks(capsys.readouterr().out)] == ["warrior idle_0", "warrior idle_1"]
@@ -209,7 +213,7 @@ def test_show_from_outside_the_project_takes_project(demo, capsys, tmp_path, mon
 def test_a31_an_unknown_id_names_the_known_ones(demo, capsys):
     assert show("slime", "nosuch") == 2
     captured = capsys.readouterr()
-    known = "(sprites: goblin, ground_light, sample_slime, slime, warrior, warrior_red)"
+    known = "(sprites: arrow, goblin, ground_light, sample_slime, slime, spark, warrior, warrior_red)"
     assert (captured.out, captured.err) == ("", f"error: unknown sprite id 'nosuch' {known}\n")
 
 
@@ -281,7 +285,7 @@ def test_a_broken_file_that_was_not_named_does_not_show_up(demo, capsys):
     assert show("warrior") == 0
     out = capsys.readouterr().out
     assert out.startswith("warrior idle_0  unit 32x32\n") and "E104" not in out
-    assert len(out.splitlines()) == 3 + 32
+    assert len(out.splitlines()) == 3 + 32 + 1  # the grip
 
 
 def test_a_bad_palette_prints_its_problems_and_no_grid(demo, capsys):
@@ -290,3 +294,91 @@ def test_a_bad_palette_prints_its_problems_and_no_grid(demo, capsys):
     assert show("goblin") == 1
     out = capsys.readouterr().out
     assert "palette.toml:3:1: E002" in out and "goblin main" not in out
+
+
+# --- 0.6: points and --diff -----------------------------------------------------
+
+
+def add_to_warrior(demo: Path, text: str) -> None:
+    path = demo / "units" / "warrior.sprite.toml"
+    path.write_text(path.read_text(encoding="utf-8") + text, encoding="utf-8")
+
+
+def test_a65_points_follow_the_grid_one_line_each_in_name_order(demo, capsys):
+    path = demo / "units" / "warrior.sprite.toml"
+    path.write_text(path.read_text(encoding="utf-8").replace("grip = [25, 18]", "grip = [25, 18]\nchest = [16, 15]"))
+    assert show("warrior", "goblin") == 0
+    warrior, goblin = blocks(capsys.readouterr().out)
+    assert warrior[3 + 32 :] == ["point chest 16,15", "point grip 25,18"]
+    # Nothing extra for a sprite without points.
+    assert len(goblin) == 3 + 32
+
+
+def test_frame_text_lists_a_frames_own_points():
+    sprite = make_sprite("gem", replace(make_frame("main", "kk", "kk"), points=(("a", (0, 1)), ("b", (1, 0)))))
+    assert frame_text(sprite, sprite.frames[0]).splitlines()[-2:] == ["point a 0,1", "point b 1,0"]
+
+
+# The right leg, rows 25 to 31 and columns 17 to 23, a pixel to the right.
+WALK = '\n[frames.walk_1]\nfrom = "idle_0"\nmove = { rows = [25, 31], cols = [17, 23], by = [1, 0] }\n'
+
+
+def test_a73_diff_prints_only_the_changed_rows_each_with_a_marker_line(demo, capsys, loaded):
+    add_to_warrior(demo, WALK)
+    assert show("warrior", "--frame", "walk_1", "--diff") == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:3] == [
+        "warrior walk_1 vs idle_0  unit 32x32",
+        "              1111111111222222222233",
+        "    01234567890123456789012345678901",
+    ]
+    rows = lines[3:-1]
+    assert [line[:4] for line in rows[::2]] == [f"{row}  " for row in range(25, 32)]
+    assert rows[0] == "25  ..........kDDDDk..kDDDDk........"
+    assert rows[1] == "    " + " " * 17 + "^^   ^^"
+    idle = loaded["warrior"].frames[0].rows
+    for numbered, marks in zip(rows[::2], rows[1::2]):
+        row = int(numbered[:2])
+        changed = [col for col, (new, old) in enumerate(zip(numbered[4:], idle[row])) if new != old]
+        assert [col - 4 for col, mark in enumerate(marks) if mark == "^"] == changed
+        assert marks == marks.rstrip()
+    assert lines[-1] == "point grip 25,18"
+
+
+def test_a73_diff_with_a_frame_name_compares_with_that_frame(demo, capsys):
+    add_to_warrior(demo, WALK)
+    assert show("warrior", "--frame", "walk_1", "--diff", "idle_1") == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "warrior walk_1 vs idle_1  unit 32x32"
+    # `idle_1` also differs from `idle_0` on row 9.
+    assert [line[:2] for line in lines[3:-1:2]] == [" 9", "25", "26", "27", "28", "29", "30", "31"]
+
+
+def test_a74_equal_frames_print_the_header_and_no_rows_differ(demo, capsys):
+    assert show("warrior", "--frame", "idle_0", "--diff", "idle_0") == 0
+    assert capsys.readouterr().out.splitlines()[:2] == ["warrior idle_0 vs idle_0  unit 32x32", "no rows differ"]
+
+
+def test_diff_takes_several_ids_that_each_have_the_frame(demo, capsys):
+    add_to_warrior(demo, WALK)
+    assert show("warrior", "warrior_red", "--frame", "walk_1", "--diff") == 0
+    assert [block[0] for block in blocks(capsys.readouterr().out)] == [
+        "warrior walk_1 vs idle_0  unit 32x32",
+        "warrior_red walk_1 vs idle_0  unit 32x32",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["warrior", "--frame", "idle_0", "--diff"], "frame 'idle_0' of 'warrior' has no from; name a frame to compare with: --diff <frame>"),
+        (["warrior", "--frame", "idle_1", "--diff", "nosuch"], "sprite 'warrior' has no frame 'nosuch' (frames: idle_0, idle_1)"),
+        (["warrior", "--diff"], "--diff needs exactly one --frame"),
+        (["warrior", "--frame", "idle_0", "--frame", "idle_1", "--diff"], "--diff needs exactly one --frame"),
+        (["warrior", "--all", "--diff"], "--diff cannot be used with --all"),
+    ],
+)
+def test_a74_diff_refusals_exit_2(demo, capsys, argv, message):
+    assert show(*argv) == 2
+    captured = capsys.readouterr()
+    assert (captured.out, captured.err) == ("", f"error: {message}\n")

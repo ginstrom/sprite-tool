@@ -93,12 +93,16 @@ def root(tmp_path, monkeypatch) -> Path:
 
 
 def loaded(root: Path, files: dict[str, str]):
-    """Write the sprite files and load them: the project, the sprites by id and every problem as a line."""
+    """Write the sprite files and load them: the project, the sprites by id and every problem as a line.
+
+    W009 is left out: these layers rest through the base's animations on
+    purpose, and W009 has tests of its own (`test_rest.py`)."""
     for name, text in files.items():
         (root / name).write_text(text, encoding="utf-8")
     project, problems = load(root)
     sprites, more = load_all(project)
     problems += more + check.run(project, sprites)
+    problems = [problem for problem in problems if problem.code != "W009"]
     return project, {sprite.id: sprite for sprite in sprites}, sorted(format_problem(problem, root) for problem in problems)
 
 

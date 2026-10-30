@@ -10,6 +10,7 @@ from sprite_tool.manifest import json_bytes
 from sprite_tool.model import ExportTarget, Placement, Sprite
 
 from .atlas import compose_sheet
+from .index import frame_points
 
 
 def export(
@@ -59,10 +60,11 @@ def _key(sprite_id: str, name: str) -> str:
 
 def _frame(placement: Placement, sprite: Sprite) -> dict[str, object]:
     """Full canvas size, never trimmed or rotated. `pivot` is the canvas
-    anchor as a fraction of the canvas."""
+    anchor as a fraction of the canvas. `points` only for a frame that has
+    any; Phaser's loader keeps it as the frame's `customData.points`."""
     size = {"h": placement.h, "w": placement.w}
     canvas = sprite.canvas
-    return {
+    entry: dict[str, object] = {
         "frame": {**size, "x": placement.x, "y": placement.y},
         "pivot": {"x": canvas.anchor[0] / canvas.width, "y": canvas.anchor[1] / canvas.height},
         "rotated": False,
@@ -70,3 +72,7 @@ def _frame(placement: Placement, sprite: Sprite) -> dict[str, object]:
         "spriteSourceSize": {**size, "x": 0, "y": 0},
         "trimmed": False,
     }
+    frame = next(frame for frame in sprite.frames if frame.name == placement.frame)
+    if frame.points:
+        entry["points"] = frame_points(frame)
+    return entry

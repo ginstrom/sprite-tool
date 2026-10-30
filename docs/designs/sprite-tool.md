@@ -19,6 +19,10 @@
   what a target exports, `move`, layers (`over`), frame lengths, `like`,
   `preview --anim` and `unoutlined` (requirements R24 to R33, criteria A36 to
   A57).
+- **Amended:** 2026-10-30, for release 0.6.0, by
+  [points-and-effect-sprites.md](points-and-effect-sprites.md): named points,
+  the `effect` canvas class, `mirror`, `show --diff` and a layer's
+  `rest = true` (requirements R34 to R46, criteria A58 to A77).
 - **Status:** Ready for planning. No blocking questions; assumptions and
   non-blocking questions are listed in [section 8](#8-open-questions-and-assumptions).
 
@@ -216,6 +220,11 @@ size = [16, 16]
 anchor = [0, 0]
 display_scale = 4
 
+[canvas.effect]          # arrows, bolts, sparks: drawn pointing right, turned about the anchor
+size = [16, 16]
+anchor = [8, 8]          # the centre; no outline rule, not grounded
+display_scale = 2
+
 [preview]
 scale = 6                # default upscale for `sprite preview`
 background = "#3a3a3a"
@@ -328,20 +337,25 @@ frame is the sprite's **default frame**. A frame name matches
      and `dy` down, transparent cells included, so it replaces what was at
      its destination. Cells that land outside the canvas are dropped. It
      comes first so that `rows` and `runs` can touch up what it leaves.
-  2. `rows`: a table from zero-based row index to a full replacement row.
-  3. `runs`: a table from zero-based row index to a list of runs. A run is
+  2. `mirror`: one table or a list of tables, each with `rows`, `cols` or
+     both as a move takes them, and no `by`. Each reverses every row of its
+     rectangle within the rectangle's columns, in place: column `c` goes to
+     `first + last - c`. It never moves anything off the canvas. A bad range,
+     an unknown key, a `by`, or neither `rows` nor `cols` is E105.
+  3. `rows`: a table from zero-based row index to a full replacement row.
+  4. `runs`: a table from zero-based row index to a list of runs. A run is
      `[column, "pixels"]`: a zero-based column and one or more characters,
      each a palette key or `.`. It replaces exactly those pixels; `.` writes
      transparency, which is how a derived frame erases. Runs in a row apply
      in list order, so a later run wins an overlap. An empty list writes
      nothing.
-  4. `shift = [dx, dy]`: move all pixels; pixels moved off the canvas are
+  5. `shift = [dx, dy]`: move all pixels; pixels moved off the canvas are
      dropped and vacated pixels are transparent.
-  5. `flip = true`: mirror horizontally.
+  6. `flip = true`: mirror horizontally.
 
   `from` may point at another frame table. A cycle is an error. A table with
-  none of `from`, `rows`, `runs` and `move` is E001 (`frame 'x': needs from,
-  rows, runs or move`). A `shift` or `move` that pushes drawn pixels off the
+  none of `from`, `rows`, `runs`, `move` and `mirror` is E001 (`frame 'x':
+  needs from, rows, runs, move or mirror`). A `shift` or `move` that pushes drawn pixels off the
   canvas is W006, naming the frame and the count.
 
   ```toml
@@ -369,6 +383,30 @@ of the same name from that sprite: its entries, its `ms` and its `loop`. The
 frames it names must exist in this sprite, and the animation it points at
 must be written out (it is resolved one step). Failures are E105; `like`
 beside another field is E001.
+
+In a layer, an animation table holding only `rest = true` holds the layer's
+default frame for as long as its base's animation of the same name plays: one
+entry, as long as the base's entries together, looping as the base's does.
+It is resolved after `like`, so the base's animation may itself be a `like`,
+and exported as any other animation. `rest` beside another field, with a
+value other than `true`, or in a sprite that is not a layer is E001; a base
+with no animation of that name is E105.
+
+**Named points.** A top-level `[points]` table names pixels of the drawing,
+`<name> = [col, row]`, with names matching `[a-z0-9_]+`. Every root frame (a
+grid, or a frame table with no `from`) has them. A derived frame starts from
+its parent's points and carries each through its operations as the pixel
+under it would go: `move` moves a point inside its rectangle and leaves one
+outside it (pixels moved onto a point do not move it), `mirror` mirrors one
+inside its rectangle, `shift` moves every point, `flip` takes column `c` to
+`width - 1 - c`, and `rows` and `runs` leave points alone. A point carried
+off the canvas is dropped from that frame and those derived from it (W008).
+`[frame_points.<frame>]` then sets that frame's own points, in its final
+coordinates: a name it shares replaces the carried point, a new name is
+added, and frames derived from it inherit the result. A variant has its
+sprite's points. Bad names, values, pixels off the canvas and a
+`[frame_points]` table naming an unknown frame are E109, and the bad point is
+left out. The exports carry points as the centre of the pixel (4.7).
 
 **Layers.** `over = "<sprite id>"` at top level names the sprite this one is
 drawn over, its **base**, which makes this sprite a **layer**. A frame of the
@@ -435,8 +473,8 @@ failures, `2` usage or config error.
 | `sprite guide` | Print the format reference, palette legend (key, hex, name) and canvas classes with their rules. | The guide |
 | `sprite new <id> --canvas <class> [--dir <subdir>] [--runs]` | Write a sprite file with one all-transparent frame named `main`: a grid of dots, or with `--runs` an empty `[frames.main.runs]` table under a comment giving the form of a run line. Refuses to overwrite. | The path |
 | `sprite check [paths...]` | Check all sprite files, or only the given files. `.png` paths are checked as images and need `--canvas <class>`. | `ok: 12 sprites, 31 frames` |
-| `sprite preview [id...] [--scale N\|display] [--grid] [--on <tile-id>] [--sheet] [--anim <name>]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
-| `sprite show <id>... [--frame <name>]... [--all]` | Print the resolved grid of each id's default frame as text, with row and column numbers; `--frame` picks frames, `--all` prints every one. Writes no file. Problems are handled as `preview` handles them. | One block per frame, with a blank line between blocks |
+| `sprite preview [id...] [--scale N\|display] [--grid] [--on <tile-id>] [--sheet] [--anim <name>] [--points]` | Write one image of the given ids to `.preview/` (names in 4.8). With no id or with `--sheet`, write `.preview/sheet.png`. Runs `check` on the sprites involved first; style problems (E106, E201, E202) are printed and the image is still written. | One path per line |
+| `sprite show <id>... [--frame <name>]... [--all] [--diff [<frame>]]` | Print the resolved grid of each id's default frame as text, with row and column numbers, then one `point <name> <col>,<row>` line per point; `--frame` picks frames, `--all` prints every one. With exactly one `--frame`, `--diff` prints only the rows that differ from the frame's `from` frame (or the named frame), each followed by a line with `^` under each changed column, under the header `<id> <frame> vs <other>`; two equal frames give `no rows differ`. `--diff` with `--all`, without one `--frame`, on a frame with no `from` and no name given, or naming an unknown frame, is exit 2. Writes no file. Problems are handled as `preview` handles them. | One block per frame, with a blank line between blocks |
 | `sprite build [--check] [--adopt [id...]]` | Run `check` on everything, then write every export target. With `--check`, write nothing and exit 1 if any generated file is missing or differs. `--adopt` is described below. | `built: 12 sprites, 31 frames, 3 targets`, after one `adopted <path>` line per adopted file |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. Refuses to overwrite. | The path |
 
@@ -485,17 +523,18 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 
 | Code | Problem |
 |---|---|
-| E001 | File is not valid TOML, or has an unknown or wrongly typed field. Also a frame table with none of `from`, `rows`, `runs` and `move`, a malformed run, move or animation entry, `like` beside another field, and `outline = "auto"` on a class with no outline rule or with `over`. |
+| E001 | File is not valid TOML, or has an unknown or wrongly typed field. Also a frame table with none of `from`, `rows`, `runs`, `move` and `mirror`, a malformed run, move or animation entry, `like` or `rest` beside another field, `rest` in a sprite that is not a layer, and `outline = "auto"` on a class with no outline rule or with `over`. |
 | E002 | Palette invalid: bad key, bad hex value. |
 | E003 | Duplicate sprite id (including variant ids), or an id that exports to the same loose PNG as another sprite's frame. |
 | E101 | Unknown canvas class. |
 | E102 | Wrong row count for the canvas. |
 | E103 | Wrong row width, or trailing whitespace. Reported per row. Also a run whose column is outside the canvas or that passes the right edge: `frame 'main' row 9: run at col 30 is 6 wide, canvas is 32 wide`. |
 | E104 | Unknown palette key. Reported per pixel, at most 10 per frame, then a count. In a run: `unknown palette key 'x' in frame 'main' row 9, col 15`, the column being the one on the canvas. |
-| E105 | Bad frame reference in `from` or `anim`, bad `rows` or `runs` row index, a `move` range outside the canvas or with its first index above its last, a `like` that cannot be taken, or `from` cycle. |
+| E105 | Bad frame reference in `from` or `anim`, bad `rows` or `runs` row index, a `move` or `mirror` range outside the canvas or with its first index above its last, any other bad `mirror`, a `like` that cannot be taken, a `rest` for an animation the base does not have, or `from` cycle. |
 | E106 | Frame is fully transparent. |
 | E107 | `swap` or `unoutlined` names a key not in the palette. |
 | E108 | `over` names an unknown sprite, the sprite itself, a layer, or a sprite of another canvas class. |
+| E109 | A bad named point: a name not matching `[a-z0-9_]+`, a value that is not two integers, a pixel outside the canvas, a `[frame_points]` table naming a frame the sprite does not have, or `[points]`, `[frame_points]` or `[frame_points.<frame>]` that is not a table. The point is left out; the sprite still loads. |
 | E201 | Outline rule violated at a pixel. At most 10 per frame, then a count. In a sprite with `outline = "auto"`: `frame 'main': 'b' is on the canvas edge; with outline = "auto" keep the interior 1 pixel inside`. |
 | E202 | Grounded rule violated. |
 | E301 | PNG size does not match the canvas. |
@@ -507,7 +546,9 @@ with one summary line, for example `2 errors, 1 warning in 2 files`.
 | W004 | An `include` or `exclude` pattern of an export matches no sprite. Reported at `sprite-tool.toml`. |
 | W005 | A sprite that would be built is selected by no export target. Given only when the project has a target. |
 | W006 | A `shift` or `move` pushes drawn pixels off the canvas: `frame 'idle_1': shift [0, 1] pushes 7 drawn pixels off the canvas`. Once for a sprite, not again for its variants. |
-| W007 | An animation of a layer differs from its base's animation of the same name in frame count or lengths. |
+| W007 | An animation of a layer differs from its base's animation of the same name in frame count or lengths. A `rest` is not compared. |
+| W008 | A derived frame's operations take a named point off the canvas: `frame 'idle_1': shift [0, 1] takes point 'grip' off the canvas`. Not given when the frame's own `[frame_points]` puts the point back. |
+| W009 | A layer neither has nor rests through an animation its base has: `anim 'walk': 'warrior' animates it and this layer does not; add [anim.walk] with like or rest = true`. Not given when the layer's `like` or `rest` of that name failed. |
 
 E106 is for an empty frame in a sprite that has drawn frames. An outline
 fault that a derived frame only carries over from its `from` frame is
@@ -582,7 +623,11 @@ target exports. Frames are always full canvas size.
   when the sprite has more than one frame, else `<id>.png`. `anims` has each
   animation by name, sorted, as
   `{"frames": [{"frame": "<name>", "ms": n}, ...], "loop": bool}`; it is `{}`
-  for a sprite with none. A layer also has `"over": "<base id>"`. A target
+  for a sprite with none. A layer also has `"over": "<base id>"`. A sprite
+  with named points has `points`, by frame then by point name, sorted, for
+  the frames that have any: `{"idle_0": {"grip": [25.5, 18.5]}}`, each the
+  centre of its pixel in canvas pixels from the top left. A sprite without
+  points has no `points` key. A target
   with no sprites writes `{}`. `build --check` compares the index like any generated
   file, which is what flags a config change (a new `display_scale`, say) that
   the exports have not caught up with.
@@ -593,7 +638,9 @@ target exports. Frames are always full canvas size.
 - `<name>.json`: Phaser "JSON Hash" atlas. Frame key is `<id>/<frame>`. Each
   entry has `frame` (`x`, `y`, `w`, `h`), `rotated: false`, `trimmed: false`,
   `spriteSourceSize`, `sourceSize`, and `pivot` (anchor divided by canvas
-  size). `meta` has `image`, `size`, `scale: "1"` and `app: "sprite-tool"`.
+  size). A frame with named points also has `points`, `{"<name>": [x, y]}`
+  as in the index; Phaser's JSON Hash loader keeps a frame's whole entry as
+  its `customData`, so a game reads it as `customData.points`. `meta` has `image`, `size`, `scale: "1"` and `app: "sprite-tool"`.
   No version or timestamp.
 - `<name>.anims.json`: Phaser animation JSON (`{"anims": [...]}`), one entry
   per sprite animation. Animation key is `<id>/<anim>`. Each frame entry has
@@ -614,7 +661,7 @@ target exports. Frames are always full canvas size.
 - `<name>.json`: a plain index, `{"<id>": {"anchor": [x, y], "bounds": [x, y, w, h],
   "canvas": "<class>", "size": [w, h], "display_scale": n,
   "frames": {"<frame>": [x, y, w, h]}}}`, because `SpriteFrames` cannot carry
-  an anchor. `canvas`, `bounds`, `anims` and `over` are as in the `frames`
+  an anchor. `canvas`, `bounds`, `anims`, `over` and `points` are as in the `frames`
   index, `bounds` being the sprite-level box; the `frames` values here are rectangles on the
   sheet.
 - The tool does not write `.import` files or `uid`s. Godot creates those on
@@ -688,6 +735,9 @@ otherwise it is a config error (exit 2). The example config in 4.3 shows
 - A layer (4.4) is drawn over its base wherever a preview draws it: each
   frame over the base's frame of the same name, in every form above. The
   image sizes do not change. A layer whose `over` is bad is drawn alone.
+- `--points` draws the pixel of each of a frame's named points in magenta
+  (`#ff00ff`), one sprite pixel at any scale, in every frame tile of the
+  plain, grid, `--on` and `--anim` forms. File names do not change.
 - `sprite preview <id>... --anim <name>` writes two things. The strip,
   `<ids>.anim-<name>.png`, has one tile for each entry of the animation, left
   to right in play order, a repeated frame drawn again, with the frame's name
@@ -796,11 +846,14 @@ class Canvas:     name: str; width: int; height: int; anchor: tuple[int, int]
 class Frame:      name: str; rows: tuple[str, ...]     # resolved: full grid, keys only
                   origins: ... | None = None           # per pixel, where in the parent frame it came from
                   lost: tuple[tuple[str, int], ...] = ()   # ("shift [0, 1]", pixels pushed off the canvas)
+                  points: tuple[tuple[str, tuple[int, int]], ...] = ()  # (name, (col, row)), sorted
+                  points_lost: tuple[tuple[str, str], ...] = ()  # ("shift [0, 1]", point name), for W008
 
 @dataclass(frozen=True)
 class Anim:       name: str; frames: tuple[str, ...]; ms: int; loop: bool
                   durations: tuple[int, ...] = ()      # one per entry of frames; empty means ms for each
                   line: int = 0                        # file line, for W007
+                  rest: bool = False                   # a layer's rest = true
 
 @dataclass(frozen=True)
 class Sprite:     id: str; source: Path; canvas: Canvas
@@ -811,6 +864,7 @@ class Sprite:     id: str; source: Path; canvas: Canvas
                   over: str | None = None                # the base of a layer; over_line is its file line
                   unoutlined: frozenset[str] = frozenset()
                   anim_likes: tuple[tuple[str, str, int], ...] = ()   # `like`s not resolved
+                  anim_rests: tuple[tuple[str, int], ...] = ()        # `rest`s not resolved
 
 @dataclass(frozen=True)
 class ExportTarget: type: str; out: Path; name: str | None; res_path: str | None; padding: int

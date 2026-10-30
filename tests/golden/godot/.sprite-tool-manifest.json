@@ -1,11 +1,13 @@
 {
   "targets": {
     "godot:atlas": [
+      "arrow.tres",
       "atlas.json",
       "atlas.png",
       "goblin.tres",
       "ground_light.tres",
       "slime.tres",
+      "spark.tres",
       "warrior.tres",
       "warrior_red.tres"
     ]

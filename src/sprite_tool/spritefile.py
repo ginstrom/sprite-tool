@@ -20,9 +20,21 @@ SUFFIX = ".sprite.toml"
 TRANSPARENT = "."
 MAX_E104_PER_FRAME = 10
 
-_TOP_LEVEL_KEYS = ("canvas", "frames", "anim", "variants", "outline", "grounded", "build", "over", "unoutlined")
-_FRAME_KEYS = ("from", "move", "rows", "runs", "shift", "flip")
-_ANIM_KEYS = ("frames", "ms", "loop", "like")
+_TOP_LEVEL_KEYS = (
+    "canvas",
+    "frames",
+    "anim",
+    "variants",
+    "outline",
+    "grounded",
+    "build",
+    "over",
+    "unoutlined",
+    "points",
+    "frame_points",
+)
+_FRAME_KEYS = ("from", "move", "mirror", "rows", "runs", "shift", "flip")
+_ANIM_KEYS = ("frames", "ms", "loop", "like", "rest")
 _MOVE_KEYS = ("rows", "cols", "by")
 _VARIANT_KEYS = ("swap",)
 ID_RE = re.compile(r"[a-z0-9_]+")
@@ -52,7 +64,8 @@ def load_all(project: Project, paths: Sequence[Path] | None = None) -> tuple[lis
         problems.extend(bad)
     sprites.sort(key=lambda sprite: sprite.id)
     sprites, bad = _resolve_likes(sprites)
-    return sprites, problems + bad
+    sprites, more = _resolve_rests(sprites)
+    return sprites, problems + bad + more
 
 
 def _resolve_likes(sprites: Sequence[Sprite]) -> tuple[list[Sprite], list[Problem]]:
@@ -84,6 +97,42 @@ def _resolve_likes(sprites: Sequence[Sprite]) -> tuple[list[Sprite], list[Proble
         if sprite.anim_likes:
             sprite = replace(sprite, anims=tuple(anims), anim_likes=tuple(failed))
         resolved.append(sprite)
+    return resolved, problems
+
+
+def _resolve_rests(sprites: Sequence[Sprite]) -> tuple[list[Sprite], list[Problem]]:
+    """Give each layer the animations it rests through with `rest = true`.
+
+    Runs after `_resolve_likes`, so a base's animation taken with `like` can
+    be rested through. A rest becomes one entry, the layer's default frame,
+    as long as the whole of the base's animation and looping as it does. A
+    layer whose `over` is bad is check's E108 and keeps its rests pending.
+    """
+    by_id: dict[str, Sprite] = {}
+    for sprite in sprites:
+        by_id.setdefault(sprite.id, sprite)
+    resolved: list[Sprite] = []
+    problems: list[Problem] = []
+    for sprite in sprites:
+        base = by_id.get(sprite.over) if sprite.over is not None else None
+        if not sprite.anim_rests or base is None or sprite.over in (sprite.id, sprite.variant_of):
+            resolved.append(sprite)
+            continue
+        anims = list(sprite.anims)
+        failed = []
+        for name, line in sprite.anim_rests:
+            theirs = next((anim for anim in base.anims if anim.name == name), None)
+            if theirs is None:
+                failed.append((name, line))
+                if sprite.variant_of is None:
+                    message = f"anim {name!r}: rest, but {base.id!r} has no animation {name!r}"
+                    problems.append(Problem(sprite.source, line, 1 if line else 0, "E105", message))
+                continue
+            total = sum(theirs.durations)
+            anims.append(
+                Anim(name=name, frames=(sprite.frames[0].name,), ms=total, loop=theirs.loop, line=line, rest=True)
+            )
+        resolved.append(replace(sprite, anims=tuple(anims), anim_rests=tuple(failed)))
     return resolved, problems
 
 
@@ -253,6 +302,20 @@ def _moved(grid: _Grid, move: _Move, blank: Any) -> tuple[_Grid, list[Any]]:
     return result, dropped
 
 
+def _mirrored(grid: _Grid, rect: _Move) -> _Grid:
+    """`grid` with each row of the rectangle of `rect` reversed within its
+    columns. `rect.by` is not used."""
+    (top, bottom), (left, right) = rect.rows, rect.cols
+    result = [list(row) for row in grid]
+    for r in range(top, bottom + 1):
+        result[r][left : right + 1] = grid[r][left : right + 1][::-1]
+    return result
+
+
+def _inside(move: _Move, col: int, row: int) -> bool:
+    return move.rows[0] <= row <= move.rows[1] and move.cols[0] <= col <= move.cols[1]
+
+
 @dataclass(frozen=True)
 class _Derived:
     """A frame table whose own fields are valid; `parent` is not resolved yet.
@@ -262,6 +325,7 @@ class _Derived:
 
     parent: str | None
     moves: tuple[_Move, ...]
+    mirrors: tuple[_Move, ...]
     rows: dict[int, str]
     runs: dict[int, list[tuple[int, str]]]
     shift: tuple[int, int]
@@ -271,7 +335,7 @@ class _Derived:
     def apply(
         self, parent_rows: tuple[str, ...], canvas: Canvas
     ) -> tuple[tuple[str, ...], tuple[tuple[tuple[int, int] | None, ...], ...], tuple[tuple[str, int], ...]]:
-        """`move`, then `rows`, then `runs`, then `shift`, then `flip`.
+        """`move`, then `mirror`, then `rows`, then `runs`, then `shift`, then `flip`.
 
         Returns the rows, where in the parent each pixel came from, and what
         each `move` and `shift` pushed off the canvas.
@@ -302,6 +366,8 @@ class _Derived:
         for move in self.moves:
             grid, dropped = _moved(grid, move, blank)
             lost.append((f"move by {list(move.by)}", sum(1 for cell in dropped if cell != blank)))
+        for mirror in self.mirrors:
+            grid = _mirrored(grid, mirror)
         if edit is not None:
             edit(grid)
         if self.shift != (0, 0):
@@ -311,6 +377,43 @@ class _Derived:
         if self.flip:
             grid = [row[::-1] for row in grid]
         return grid, lost
+
+    def carry(
+        self, points: dict[str, tuple[int, int]], canvas: Canvas
+    ) -> tuple[dict[str, tuple[int, int]], list[tuple[str, str]]]:
+        """Each point `(col, row)` taken where the operations take the pixel
+        under it, in the order `_transform` runs them. A point is not a cell:
+        pixels moved onto it do not move it. Returns the points still on the
+        canvas, and the operation and name of each that left it."""
+        lost: list[tuple[str, str]] = []
+
+        def step(found: dict[str, tuple[int, int]], what: str, where: Any) -> dict[str, tuple[int, int]]:
+            kept = {}
+            for name, (col, row) in found.items():
+                col, row = where(col, row)
+                if 0 <= col < canvas.width and 0 <= row < canvas.height:
+                    kept[name] = (col, row)
+                else:
+                    lost.append((what, name))
+            return kept
+
+        # Each `where` is used at once, inside its own iteration.
+        for move in self.moves:
+            dx, dy = move.by
+            points = step(
+                points,
+                f"move by {list(move.by)}",
+                lambda c, r: (c + dx, r + dy) if _inside(move, c, r) else (c, r),
+            )
+        for mirror in self.mirrors:
+            left, right = mirror.cols
+            points = step(points, "mirror", lambda c, r: (left + right - c, r) if _inside(mirror, c, r) else (c, r))
+        if self.shift != (0, 0):
+            dx, dy = self.shift
+            points = step(points, f"shift {list(self.shift)}", lambda c, r: (c + dx, r + dy))
+        if self.flip:
+            points = step(points, "flip", lambda c, r: (canvas.width - 1 - c, r))
+        return points, lost
 
 
 class _Parser:
@@ -349,8 +452,10 @@ class _Parser:
         unoutlined = self._unoutlined(data)
         grounded = self._flag(data, "grounded")
         build = self._flag(data, "build")
-        resolved = self._frames(data.get("frames"), canvas)
-        anims, likes = self._anims(data.get("anim", {}), resolved)
+        points = self._points(data.get("points", {}), canvas, ("points",), "points")
+        frame_points = self._frame_points(data.get("frame_points", {}), data.get("frames"), canvas)
+        resolved = self._frames(data.get("frames"), canvas, points, frame_points)
+        anims, likes, rests = self._anims(data.get("anim", {}), resolved, over is not None)
         swaps = self._variants(data.get("variants", {}))
 
         frames = tuple(frame for frame in resolved.values() if frame is not None)
@@ -361,6 +466,9 @@ class _Parser:
                 noun = "pixel" if lost == 1 else "pixels"
                 message = f"frame {frame.name!r}: {what} pushes {lost} drawn {noun} off the canvas"
                 self.report_at(frame.line or 1, 1, "W006", message)
+            for what, name in frame.points_lost:
+                message = f"frame {frame.name!r}: {what} takes point {name!r} off the canvas"
+                self.report_at(frame.line or 1, 1, "W008", message)
         if auto_outline:
             # Only now, on each frame's final interior: any earlier and a
             # derived frame would edit its parent's outline.
@@ -382,6 +490,7 @@ class _Parser:
             over_line=self.line("over") if over is not None else 0,
             unoutlined=unoutlined,
             anim_likes=likes,
+            anim_rests=rests,
         )
         return [sprite, *(_variant(sprite, name, swap) for name, swap in swaps.items())]
 
@@ -438,10 +547,58 @@ class _Parser:
             return True
         return value
 
+    # --- points ---
+
+    def _points(
+        self, raw: Any, canvas: Canvas, key: tuple[str, ...], where: str
+    ) -> dict[str, tuple[int, int]]:
+        """The good points of one `[points]` or `[frame_points.<frame>]` table,
+        `name -> (col, row)`, with an E109 for each that is not."""
+        if not isinstance(raw, dict):
+            self.report("E109", f"{where} must be a table of name = [col, row]", *key)
+            return {}
+        points = {}
+        for name, value in raw.items():
+            if not ID_RE.fullmatch(name):
+                self.report("E109", f"{where}: bad point name {name!r}: use a-z, 0-9 and _", *key, name)
+            elif not _is_int_pair(value):
+                self.report("E109", f"{where}: point {name!r} must be [col, row], two integers", *key, name)
+            elif not (0 <= value[0] < canvas.width and 0 <= value[1] < canvas.height):
+                size = f"{canvas.width}x{canvas.height}"
+                self.report("E109", f"{where}: point {name!r} {value} is outside the {size} canvas", *key, name)
+            else:
+                points[name] = (value[0], value[1])
+        return points
+
+    def _frame_points(
+        self, raw: Any, frames: Any, canvas: Canvas
+    ) -> dict[str, dict[str, tuple[int, int]]]:
+        """The good points of each `[frame_points.<frame>]`, by frame name."""
+        if not isinstance(raw, dict):
+            self.report("E109", "frame_points must be a table of [frame_points.<frame>] tables", "frame_points")
+            return {}
+        names = frames if isinstance(frames, dict) else {}
+        found = {}
+        for frame, table in raw.items():
+            if frame not in names:
+                self.report("E109", f"frame_points names unknown frame {frame!r}", "frame_points", frame)
+                continue
+            found[frame] = self._points(table, canvas, ("frame_points", frame), f"frame_points.{frame}")
+        return found
+
     # --- frames ---
 
-    def _frames(self, raw: Any, canvas: Canvas) -> dict[str, Frame | None]:
-        """Every frame name in the file, in file order; None for a frame that failed."""
+    def _frames(
+        self,
+        raw: Any,
+        canvas: Canvas,
+        points: dict[str, tuple[int, int]],
+        frame_points: dict[str, dict[str, tuple[int, int]]],
+    ) -> dict[str, Frame | None]:
+        """Every frame name in the file, in file order; None for a frame that failed.
+
+        `points` are those of every root frame; `frame_points` those a frame
+        sets for itself, by frame name, which its derived frames inherit."""
         if not isinstance(raw, dict) or not raw:
             self.report("E001", "frames is required and must be a table with at least one frame", "frames")
             return {}
@@ -452,14 +609,17 @@ class _Parser:
             if not _FRAME_NAME_RE.fullmatch(name):
                 self.report("E001", f"bad frame name {name!r}: use a-z, 0-9 and _", "frames", name)
             elif isinstance(value, str):
-                resolved[name] = self._grid(name, value, canvas)
+                frame = self._grid(name, value, canvas)
+                if frame is not None:
+                    frame = replace(frame, points=_sorted_points({**points, **frame_points.get(name, {})}))
+                resolved[name] = frame
             elif isinstance(value, dict):
                 derived = self._derived(name, value, raw, canvas)
                 if derived is not None:
                     pending[name] = derived
             else:
                 self.report("E001", f"frame {name!r} must be a grid string or a table with from, rows, runs or move", "frames", name)
-        self._resolve(pending, resolved, canvas)
+        self._resolve(pending, resolved, canvas, points, frame_points)
         return resolved
 
     def _grid(self, name: str, value: str, canvas: Canvas) -> Frame | None:
@@ -489,8 +649,8 @@ class _Parser:
             if field not in _FRAME_KEYS:
                 self.report("E001", f"frame {name!r}: unknown field {field!r}", *key, field)
 
-        if not any(field in table for field in ("from", "rows", "runs", "move")):
-            self.report("E001", f"frame {name!r}: needs from, rows, runs or move", *key)
+        if not any(field in table for field in ("from", "rows", "runs", "move", "mirror")):
+            self.report("E001", f"frame {name!r}: needs from, rows, runs, move or mirror", *key)
 
         parent = table.get("from")
         if parent is None:
@@ -501,6 +661,7 @@ class _Parser:
             self.report("E105", f"frame {name!r}: from names unknown frame {parent!r}", *key, "from")
 
         moves = self._moves(name, table.get("move", []), canvas)
+        mirrors = self._moves(name, table.get("mirror", []), canvas, "mirror")
 
         # One check for `rows` and `runs`, so that they share the frame's E104 cap.
         check = _RowCheck(self, name, canvas)
@@ -557,45 +718,70 @@ class _Parser:
         # A frame written only as `[frames.<name>.runs]` has no line of its own.
         line = self.line(*key, "rows") if "rows" in table else self.line(*key) or self.line(*key, "runs")
         return _Derived(
-            parent=parent, moves=moves, rows=rows, runs=runs, shift=(shift[0], shift[1]), flip=flip, line=line
+            parent=parent,
+            moves=moves,
+            mirrors=mirrors,
+            rows=rows,
+            runs=runs,
+            shift=(shift[0], shift[1]),
+            flip=flip,
+            line=line,
         )
 
-    def _moves(self, name: str, raw: Any, canvas: Canvas) -> tuple[_Move, ...]:
-        """The moves of a frame table, reporting each that cannot be used."""
-        key = ("frames", name, "move")
+    def _moves(self, name: str, raw: Any, canvas: Canvas, kind: str = "move") -> tuple[_Move, ...]:
+        """The moves of a frame table, reporting each that cannot be used.
+
+        With `kind` "mirror", the rectangles of its `mirror`, which take no
+        `by`; a mirror that cannot be used is E105, as a bad range is."""
+        key = ("frames", name, kind)
         where = f"frame {name!r}: "
+        mirror = kind == "mirror"
+        # What a mirror holds is checked as its ranges are; a move's shape is E001.
+        shape = "E105" if mirror else "E001"
         tables = [raw] if isinstance(raw, dict) else raw
         if not isinstance(tables, list) or not all(isinstance(table, dict) for table in tables):
-            self.report("E001", where + "move must be a table or a list of tables", *key)
+            self.report("E001", where + f"{kind} must be a table or a list of tables", *key)
             return ()
         moves = []
         for table in tables:
-            unknown = [field for field in table if field not in _MOVE_KEYS]
+            unknown = [field for field in table if field not in _MOVE_KEYS or (mirror and field == "by")]
             if unknown:
-                self.report("E001", where + f"move has unknown key {unknown[0]!r}", *key)
+                what = "has no by" if unknown[0] == "by" else f"has unknown key {unknown[0]!r}"
+                self.report(shape, where + f"{kind} {what}", *key)
                 continue
             if "rows" not in table and "cols" not in table:
-                self.report("E001", where + "move needs rows or cols (use shift to move the whole frame)", *key)
+                hint = "flip to mirror" if mirror else "shift to move"
+                self.report(shape, where + f"{kind} needs rows or cols (use {hint} the whole frame)", *key)
                 continue
-            if not _is_int_pair(table.get("by")):
+            if not mirror and not _is_int_pair(table.get("by")):
                 self.report("E001", where + "move needs by = [dx, dy], two integers", *key)
                 continue
             ranges = []
             for field, size in (("rows", canvas.height), ("cols", canvas.width)):
                 value = table.get(field, [0, size - 1])
                 if not _is_int_pair(value):
-                    self.report("E001", where + f"move {field} must be [first, last], two integers", *key)
+                    self.report("E001", where + f"{kind} {field} must be [first, last], two integers", *key)
                 elif not 0 <= value[0] <= value[1] < size:
-                    message = where + f"bad move {field} {value} (expected 0 to {size - 1}, first <= last)"
+                    message = where + f"bad {kind} {field} {value} (expected 0 to {size - 1}, first <= last)"
                     self.report("E105", message, *key)
                 else:
                     ranges.append((value[0], value[1]))
             if len(ranges) == 2:
-                moves.append(_Move(rows=ranges[0], cols=ranges[1], by=tuple(table["by"])))
+                moves.append(_Move(rows=ranges[0], cols=ranges[1], by=tuple(table.get("by", (0, 0)))))
         return tuple(moves)
 
-    def _resolve(self, pending: dict[str, _Derived], resolved: dict[str, Frame | None], canvas: Canvas) -> None:
+    def _resolve(
+        self,
+        pending: dict[str, _Derived],
+        resolved: dict[str, Frame | None],
+        canvas: Canvas,
+        points: dict[str, tuple[int, int]],
+        frame_points: dict[str, dict[str, tuple[int, int]]],
+    ) -> None:
         """Fill `resolved` for the derived frames in `pending`, parents first.
+
+        A frame with a parent carries the parent's points through its
+        operations; one without has `points`. Then its own `frame_points` apply.
 
         A frame with no `from` starts from a transparent canvas. A frame whose
         `from` chain reaches a failed frame stays None without a problem of
@@ -624,11 +810,15 @@ class _Parser:
                 derived = pending[child]
                 if derived.parent is None:
                     base: tuple[str, ...] | None = (TRANSPARENT * canvas.width,) * canvas.height
+                    carried, points_lost = dict(points), []
                 else:
                     parent = resolved[derived.parent]
                     base = parent.rows if parent is not None else None
+                    inherited = dict(parent.points) if parent is not None else {}
+                    carried, points_lost = derived.carry(inherited, canvas)
                 if base is not None:
                     rows, origins, lost = derived.apply(base, canvas)
+                    own = frame_points.get(child, {})
                     resolved[child] = Frame(
                         name=child,
                         rows=rows,
@@ -637,6 +827,9 @@ class _Parser:
                         parent=derived.parent,
                         origins=origins if derived.parent is not None else None,
                         lost=lost,
+                        points=_sorted_points({**carried, **own}),
+                        # A point the frame puts back itself was meant to leave.
+                        points_lost=tuple((what, name) for what, name in points_lost if name not in own),
                     )
                 done.add(child)
 
@@ -644,18 +837,30 @@ class _Parser:
     # --- animations and variants ---
 
     def _anims(
-        self, raw: Any, frames: dict[str, Frame | None]
-    ) -> tuple[tuple[Anim, ...], tuple[tuple[str, str, int], ...]]:
-        """The animations written out, and name, sprite id and line of each `like`."""
+        self, raw: Any, frames: dict[str, Frame | None], layer: bool = False
+    ) -> tuple[tuple[Anim, ...], tuple[tuple[str, str, int], ...], tuple[tuple[str, int], ...]]:
+        """The animations written out, name, sprite id and line of each `like`,
+        and name and line of each `rest`. `layer`: the sprite has `over`."""
         if not isinstance(raw, dict):
             self.report("E001", "anim must be a table of [anim.<name>] tables", "anim")
-            return (), ()
+            return (), (), ()
         anims = []
         likes = []
+        rests = []
         for name, table in raw.items():
             key = ("anim", name)
             if not isinstance(table, dict):
                 self.report("E001", f"anim {name!r} must be a table", *key)
+                continue
+            if "rest" in table:
+                if len(table) > 1:
+                    self.report("E001", f"anim {name!r}: rest takes no other field", *key, "rest")
+                elif table["rest"] is not True:
+                    self.report("E001", f"anim {name!r}: rest must be true", *key, "rest")
+                elif not layer:
+                    self.report("E001", f"anim {name!r}: rest is only for a layer, a sprite with over", *key, "rest")
+                else:
+                    rests.append((name, self.line(*key, "rest")))
                 continue
             if "like" in table:
                 if len(table) > 1:
@@ -713,7 +918,7 @@ class _Parser:
                 anims.append(
                     Anim(name=name, frames=tuple(names), ms=ms, loop=loop, durations=durations, line=self.line(*key))
                 )
-        return tuple(anims), tuple(likes)
+        return tuple(anims), tuple(likes), tuple(rests)
 
     def _variants(self, raw: Any) -> dict[str, dict[int, str]]:
         """The translation table of each valid variant, by variant name."""
@@ -747,6 +952,10 @@ class _Parser:
             if len(self.problems) == problems_before:
                 swaps[name] = str.maketrans(swap)
         return swaps
+
+
+def _sorted_points(points: dict[str, tuple[int, int]]) -> tuple[tuple[str, tuple[int, int]], ...]:
+    return tuple(sorted(points.items()))
 
 
 def _variant(base: Sprite, name: str, swap: dict[int, str]) -> Sprite:

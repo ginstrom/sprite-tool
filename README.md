@@ -53,22 +53,22 @@ With [uv](https://docs.astral.sh/uv/), which fetches Python 3.11 or later if
 it is missing:
 
 ```sh
-uv tool install git+https://github.com/ginstrom/sprite-tool@v0.5.0
-sprite --version         # sprite 0.5.0
+uv tool install git+https://github.com/ginstrom/sprite-tool@v0.6.0
+sprite --version         # sprite 0.6.0
 ```
 
 Name a tag, as above, so that everyone on a game builds the same files; leave
-`@v0.5.0` off to follow `main`. To move to a newer release, run the command
+`@v0.6.0` off to follow `main`. To move to a newer release, run the command
 again with the new tag and `--force`. The tool is not on PyPI.
 
 Other ways to run it:
 
 ```sh
 # without installing, for example in CI
-uvx --from git+https://github.com/ginstrom/sprite-tool@v0.5.0 sprite build --check
+uvx --from git+https://github.com/ginstrom/sprite-tool@v0.6.0 sprite build --check
 
 # with pipx
-pipx install git+https://github.com/ginstrom/sprite-tool@v0.5.0
+pipx install git+https://github.com/ginstrom/sprite-tool@v0.6.0
 ```
 
 Install it as a tool, as above, and not as a dependency of a Python game. It
@@ -103,7 +103,7 @@ sprite init art          # the art project, in a directory of the game repositor
 
   ```yaml
   - uses: astral-sh/setup-uv@v6
-  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.5.0 sprite build --check --project art
+  - run: uvx --from git+https://github.com/ginstrom/sprite-tool@v0.6.0 sprite build --check --project art
   ```
 
 ## Quick start
@@ -142,8 +142,8 @@ the current directory.
 | `sprite guide` | Print the format reference, palette and canvas classes. |
 | `sprite new <id> --canvas <class> [--dir <subdir>] [--runs]` | Write a blank sprite file: a grid of dots, or with `--runs` a runs table to fill in. |
 | `sprite check [<file>...] [--canvas <class>]` | Check every sprite file, or the given sprite files and PNGs. |
-| `sprite preview [<id>...] [--grid] [--scale N\|display] [--on <tile-id>] [--sheet] [--anim <name>]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. With `--anim`, an animation as a strip and a GIF. |
-| `sprite show <id>... [--frame <name>]... [--all]` | Print a sprite's finished grid as text (see below). Writes no file. |
+| `sprite preview [<id>...] [--grid] [--scale N\|display] [--on <tile-id>] [--sheet] [--anim <name>] [--points]` | Write a preview PNG to `.preview/` (see below). With no id, a contact sheet of every sprite. With `--anim`, an animation as a strip and a GIF. `--points` marks named points. |
+| `sprite show <id>... [--frame <name>]... [--all] [--diff [<frame>]]` | Print a sprite's finished grid as text (see below), or with `--diff` only the rows one frame changes. Writes no file. |
 | `sprite build [--check] [--adopt [<id>...]]` | Check everything, then write every export target. |
 | `sprite import <png> --canvas <class> [--id <id>] [--scale N] [--snap]` | Write a sprite file from a PNG. |
 | `sprite --version` | Print the tool's version. |
@@ -206,11 +206,41 @@ Release 0.5.0 added these:
   no outline, such as smoke: the outline rule passes them and
   `outline = "auto"` draws none around them.
 
+Release 0.6.0 added these:
+
+- **`[points]`** names pixels of the drawing that a game needs, such as where
+  a weapon is gripped or where a shot leaves a bow:
+  `grip = [25, 18]`, as `[col, row]`. Every frame has them, and a derived
+  frame's `move`, `mirror`, `shift` and `flip` carry each point as they carry
+  the pixel under it, so a breathing frame lowers the grip with the body. A
+  point carried off the canvas is dropped from that frame (`W008`).
+  `[frame_points.<frame>]` gives one frame points of its own, in that frame's
+  final coordinates (an attack frame's raised arm); frames derived from it
+  inherit them. Every target exports them (see below), as the centre of the
+  pixel: `[25.5, 18.5]`.
+- **`mirror`** in a frame table reverses a rectangle left to right in place,
+  taking `rows`, `cols` or both as `move` does:
+  `mirror = { rows = [25, 31], cols = [10, 21] }` mirrors the legs and leaves
+  the body. It runs after `move` and before `rows` and `runs`, which patch
+  what is not symmetric.
+- **`rest = true`** as the only line of a layer's `[anim.<name>]` holds the
+  layer's default frame for as long as its base's animation of that name
+  plays: a shield that does not walk. It is exported as a one-frame animation
+  of the base's whole length, so a game can play the same name on every layer
+  of a figure. `check` warns (`W009`) of a base animation that a layer
+  neither has nor rests through.
+- **Effects.** `sprite init` declares an `effect` canvas class: 16x16,
+  anchored at its centre, with no outline or grounded rule. Draw an effect
+  pointing right, so the game turns it by its angle of flight, name its
+  leading pixel `tip`, and make a one-shot effect an animation with
+  `loop = false`. The demo has an arrow and a spark burst drawn this way.
+
 ### The text view
 
 `sprite show` prints what a sprite file resolves to: the pixels `build` would
-export, after `move`, `rows`, `runs`, `shift`, `flip`, the automatic outline and
-variant swaps. It needs no image viewer and writes no file.
+export, after `move`, `mirror`, `rows`, `runs`, `shift`, `flip`, the automatic
+outline and variant swaps, then one `point <name> <col>,<row>` line for each
+of the frame's points. It needs no image viewer and writes no file.
 
 ```
 $ sprite show icon_ring
@@ -229,6 +259,19 @@ icon_ring base  icon 20x20
 `rows` and the check messages use. It prints the default frame of each id;
 `--frame <name>`, which may be repeated, picks others, and `--all` prints
 every frame. A variant is shown by its own id (`sprite show warrior_red`).
+
+`--diff` prints only what one frame changes: with one `--frame`, the rows that
+differ from its `from` frame (or from the frame named after `--diff`), each
+with a line of `^` under the columns that changed.
+
+```
+$ sprite show warrior --frame walk_1 --diff
+warrior walk_1 vs idle_0  unit 32x32
+              1111111111222222222233
+    01234567890123456789012345678901
+25  ..........kDDDDk..kDDDDk........
+                     ^^   ^^
+```
 Problems are handled as `preview` handles them: style problems are printed
 and the grid still shown, any other error stops it with exit code `1`.
 
@@ -256,7 +299,9 @@ the game shows. `--scale display` draws only the game-size frames, each sprite
 at its own class's scale; it cannot be combined with `--grid`.
 
 `--on` takes any sprite id, not only a tile. A layer (a sprite with `over`)
-is drawn over its base in every preview.
+is drawn over its base in every preview. `--points` draws each named point's
+pixel in magenta (`#ff00ff`), in every frame; it goes with `--grid`, `--on`
+and `--anim`.
 
 `--anim <name>` writes an animation two ways and prints both paths. The PNG
 is a strip: one tile for each entry of the animation in play order, with the
@@ -355,7 +400,11 @@ A frame's `bounds` covers that frame and the sprite's covers all its frames,
 so something placed above a unit does not move with its animation. `anims`
 has each animation by name, as
 `{"frames": [{"frame": "idle_0", "ms": 400}, ...], "loop": true}`, and a
-layer has `"over": "<base id>"`. A change
+layer has `"over": "<base id>"`. A sprite with named points has `points`, by
+frame then by name, each the centre of its pixel from the canvas's top left:
+`"points": {"idle_0": {"grip": [25.5, 18.5]}}`. A game places something at a
+point with `(point - anchor) * display_scale` from where it drew the sprite,
+negating x when it mirrors the sprite. A change
 to `display_scale` or `anchor` in the config changes this file, and
 `sprite build --check` reports it until the project is rebuilt.
 
@@ -379,12 +428,19 @@ the sprite's origin, so no `setOrigin` call is needed: a unit anchored at its
 feet is placed by its feet. Set `pixelArt: true` in the game config. This was
 checked in Phaser 4.2.1.
 
+A frame with named points has them in its atlas entry as `points`, which
+Phaser's loader keeps on the frame:
+
+```js
+const { grip } = this.textures.getFrame('atlas', 'warrior/idle_0').customData.points;
+```
+
 ### `godot`
 
 Writes `<name>.png`, one `<id>.tres` (a `SpriteFrames` resource) per sprite,
 and `<name>.json`, an index of each sprite's canvas class, size, anchor,
-display scale, bounds (as in `sprites.json`) and frame rectangles on the
-sheet. `res_path` must be the `res://` path of the `out` directory,
+display scale, bounds and points (as in `sprites.json`) and frame rectangles
+on the sheet. `res_path` must be the `res://` path of the `out` directory,
 because each `.tres` refers to the sheet by that path.
 
 ```gdscript
@@ -492,6 +548,20 @@ A sprite file that uses `move`, `over`, `like`, `unoutlined` or a frame's own
 `ms`, and a config with `canvases`, `include` or `exclude`, is an error on
 0.4.0, so everyone working on the game needs the new version.
 
+## Upgrading from 0.5.0
+
+Projects load, check and build unchanged, and a project with no `[points]`
+builds to the same bytes, so `sprite build --check` stays clean after moving
+the pin to `v0.6.0`. One warning is new: `W009`, for a layer that has no
+animation of a name its base animates. It fails nothing; where the layer is
+meant to hold still, add `[anim.<name>]` with `rest = true`. `sprite init`
+now declares an `effect` class, but an existing project's config is not
+touched: to have one, copy `[canvas.effect]` from the config `sprite init`
+writes into a scratch directory.
+
+A sprite file that uses `[points]`, `[frame_points]`, `mirror` or `rest` is an
+error on 0.5.0, so everyone working on the game needs the new version.
+
 ## More
 
 - [docs/designs/sprite-tool.md](docs/designs/sprite-tool.md) is the design:
@@ -500,9 +570,11 @@ A sprite file that uses `move`, `over`, `like`, `unoutlined` or a frame's own
   [docs/designs/feedback-fixes.md](docs/designs/feedback-fixes.md) is the
   design of what 0.3.0 added,
   [docs/designs/text-view-and-runs-discovery.md](docs/designs/text-view-and-runs-discovery.md)
-  of what 0.4.0 added, and
+  of what 0.4.0 added,
   [docs/designs/layers-animation-and-export-selection.md](docs/designs/layers-animation-and-export-selection.md)
-  of what 0.5.0 added.
+  of what 0.5.0 added, and
+  [docs/designs/points-and-effect-sprites.md](docs/designs/points-and-effect-sprites.md)
+  of what 0.6.0 added.
 - [AGENTS.md](AGENTS.md) covers working on the tool itself.
 
 MIT licence.

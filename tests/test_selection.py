@@ -163,15 +163,15 @@ def edit_config(root: Path, old: str, new: str) -> None:
 
 def test_a36_canvases_on_one_target_leaves_the_others_whole(demo, capsys):
     edit_config(demo, 'out = "out/phaser"\n', 'out = "out/phaser"\ncanvases = ["unit"]\n')
-    assert build(capsys) == (0, ["built: 5 sprites, 7 frames, 3 targets"])
+    assert build(capsys) == (0, ["built: 7 sprites, 12 frames, 3 targets"])
     assert atlas_ids(demo) == {"goblin", "slime", "warrior", "warrior_red"}
-    assert frames_ids(demo) == ["goblin", "ground_light", "slime", "warrior", "warrior_red"]
+    assert frames_ids(demo) == ["arrow", "goblin", "ground_light", "slime", "spark", "warrior", "warrior_red"]
     assert (demo / "out" / "godot" / "ground_light.tres").is_file()
 
 
 def test_a37_a_sprite_dropped_from_a_target_is_stale_and_then_removed(demo, capsys):
     set_exports(demo, FRAMES + PHASER)
-    assert build(capsys) == (0, ["built: 5 sprites, 7 frames, 2 targets"])
+    assert build(capsys) == (0, ["built: 7 sprites, 12 frames, 2 targets"])
     assert (demo / "out" / "frames" / "slime.png").is_file()
 
     edit_config(demo, 'out = "out/frames"\n', 'out = "out/frames"\nexclude = ["slime*"]\n')
@@ -180,11 +180,11 @@ def test_a37_a_sprite_dropped_from_a_target_is_stale_and_then_removed(demo, caps
     assert "out/frames/slime.png: E401 no longer generated" in lines
     assert not any(line.startswith("out/phaser/") for line in lines)
 
-    assert build(capsys) == (0, ["built: 5 sprites, 7 frames, 2 targets"])
+    assert build(capsys) == (0, ["built: 7 sprites, 12 frames, 2 targets"])
     assert not (demo / "out" / "frames" / "slime.png").exists()
     assert "slime" not in frames_ids(demo)
     assert "slime" in atlas_ids(demo)
-    assert build(capsys, "--check") == (0, ["up to date: 5 sprites, 7 frames, 2 targets"])
+    assert build(capsys, "--check") == (0, ["up to date: 7 sprites, 12 frames, 2 targets"])
 
 
 def test_the_summary_counts_the_sprites_some_target_exports(demo, capsys):
@@ -210,7 +210,7 @@ def test_a39_a_pattern_that_matches_no_sprite_is_w004(demo, capsys):
     assert capsys.readouterr().out.splitlines() == [
         "sprite-tool.toml: W004 export 2 (phaser): include pattern 'gaer_*' matches no sprite",
         "sprite-tool.toml: W004 export 2 (phaser): exclude pattern 'nothing' matches no sprite",
-        "ok: 6 sprites, 8 frames",
+        "ok: 8 sprites, 13 frames",
     ]
 
 
@@ -218,11 +218,13 @@ def test_a39_a_sprite_in_no_target_is_w005_at_its_file(demo, capsys):
     set_exports(demo, FRAMES + 'canvases = ["unit"]\nexclude = ["warrior_red"]\n')
     assert main(["check"]) == 0
     assert capsys.readouterr().out.splitlines() == [
+        "effects/arrow.sprite.toml: W005 sprite 'arrow' is in no export target; set build = false if that is meant",
+        "effects/spark.sprite.toml: W005 sprite 'spark' is in no export target; set build = false if that is meant",
         "tiles/ground_light.sprite.toml: W005 sprite 'ground_light' is in no export target;"
         " set build = false if that is meant",
         "units/warrior.sprite.toml: W005 sprite 'warrior_red' is in no export target;"
         " set build = false if that is meant",
-        "ok: 6 sprites, 8 frames",
+        "ok: 8 sprites, 13 frames",
     ]
     # A warning does not stop the build either.
     code, lines = build(capsys)
@@ -233,12 +235,12 @@ def test_a_sprite_that_is_not_built_is_not_w005(demo, capsys):
     """`sample_slime` says `build = false`, and `include` leaves it out as well."""
     set_exports(demo, FRAMES + 'exclude = ["sample_*"]\n')
     assert main(["check"]) == 0
-    assert capsys.readouterr().out == "ok: 6 sprites, 8 frames\n"
+    assert capsys.readouterr().out == "ok: 8 sprites, 13 frames\n"
 
 
 def test_no_w005_without_a_selection_or_without_targets(demo, capsys):
     assert main(["check"]) == 0
-    assert capsys.readouterr().out == "ok: 6 sprites, 8 frames\n"
+    assert capsys.readouterr().out == "ok: 8 sprites, 13 frames\n"
     set_exports(demo, "")
     assert main(["check"]) == 0
-    assert capsys.readouterr().out == "ok: 6 sprites, 8 frames\n"
+    assert capsys.readouterr().out == "ok: 8 sprites, 13 frames\n"

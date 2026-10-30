@@ -66,7 +66,7 @@ def test_build_check_passes_against_the_golden_files(tmp_path, capsys):
     shutil.copytree(GOLDEN, root / "out")
 
     assert build(root, "--check") == 0
-    assert capsys.readouterr().out == "up to date: 5 sprites, 7 frames, 3 targets\n"
+    assert capsys.readouterr().out == "up to date: 7 sprites, 12 frames, 3 targets\n"
 
 
 def test_a_fresh_build_of_the_demo_is_the_golden_files_byte_for_byte(built):
@@ -81,7 +81,7 @@ def test_a8_two_copies_of_the_demo_build_to_identical_bytes(tmp_path):
     assert build(second) == 0
 
     assert tree(first / "out") == tree(second / "out")
-    assert len(tree(first / "out")) == 23
+    assert len(tree(first / "out")) == 31
 
 
 def test_a8_a_second_build_in_place_changes_no_byte(built):
@@ -109,7 +109,7 @@ def test_a14_unit_and_tile_are_in_one_sheet_at_their_own_sizes(built):
 
 def test_golden_text_files_hold_no_path_timestamp_or_tool_version():
     texts = {name: data.decode("utf-8") for name, data in tree(GOLDEN).items() if not name.endswith(".png")}
-    assert len(texts) == 12
+    assert len(texts) == 14
     tool_version = version("sprite-tool")
     forbidden = [
         re.compile(r"(?<![:/\w])/\w"),  # an absolute POSIX path (`res://` is not one)
@@ -131,7 +131,7 @@ def test_golden_text_files_hold_no_path_timestamp_or_tool_version():
 
 def test_golden_pngs_hold_only_image_data():
     pngs = {name: data for name, data in tree(GOLDEN).items() if name.endswith(".png")}
-    assert len(pngs) == 11
+    assert len(pngs) == 17
     for name, data in pngs.items():
         assert chunk_types(data) == ["IHDR", "IDAT", "IEND"], name
 
@@ -141,6 +141,7 @@ def test_q5_two_hundred_sprites_build_within_the_time_bound(tmp_path, capsys):
     unit = (root / "units" / "goblin.sprite.toml").read_text(encoding="utf-8")
     shutil.rmtree(root / "units")
     shutil.rmtree(root / "tiles")
+    shutil.rmtree(root / "effects")
     (root / "units").mkdir()
     for number in range(SPEED_SPRITES):
         (root / "units" / f"goblin_{number:03}.sprite.toml").write_text(unit, encoding="utf-8")

@@ -22,10 +22,10 @@ MAX_E302_PER_FILE = 10
 
 
 def run(project: Project, sprites: Sequence[Sprite]) -> list[Problem]:
-    """E003, E106, E108, E201, E202, W001 to W005 and W007 for the loaded sprites.
+    """E003, E106, E108, E201, E202, W001 to W005, W007 and W009 for the loaded sprites.
 
     A variant gets only E003 and E201, so that a fault in its base sprite is
-    not reported again for each variant. W006 is the parser's.
+    not reported again for each variant. W006 and W008 are the parser's.
     """
     problems = _shared_colours(project)
     problems += _duplicate_ids(project, sprites)
@@ -101,19 +101,33 @@ def _under(base: Sprite | None, frame: Frame) -> tuple[str, ...] | None:
 
 def _step_problems(layer: Sprite, base: Sprite | None) -> list[Problem]:
     """W007 for each animation that a layer and its base both have and that
-    differs in frame count or lengths. Frame names are each sprite's own."""
+    differs in frame count or lengths. Frame names are each sprite's own. A
+    rest holds one frame by design, so it is not compared.
+
+    W009 for each animation of the base that the layer neither has nor rests
+    through, unless the layer's `like` or `rest` for it failed: that has its
+    own error."""
     if base is None:
         return []
     theirs = {anim.name: anim for anim in base.anims}
     problems = []
     for anim in layer.anims:
         other = theirs.get(anim.name)
-        if other is not None and anim.durations != other.durations:
+        if other is not None and not anim.rest and anim.durations != other.durations:
             message = (
                 f"anim {anim.name!r}: {_lengths(anim.durations, 'frames of')}, but {base.id!r} plays"
                 f" {_lengths(other.durations, 'of')}; the layers will drift"
             )
             problems.append(Problem(layer.source, anim.line, 1 if anim.line else 0, "W007", message))
+    named = {anim.name for anim in layer.anims}
+    named |= {name for name, _, _ in layer.anim_likes} | {name for name, _ in layer.anim_rests}
+    line = layer.over_line
+    for name in sorted(theirs.keys() - named):
+        message = (
+            f"anim {name!r}: {base.id!r} animates it and this layer does not;"
+            f" add [anim.{name}] with like or rest = true"
+        )
+        problems.append(Problem(layer.source, line, 1 if line else 0, "W009", message))
     return problems
 
 

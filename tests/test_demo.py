@@ -10,7 +10,7 @@ DEMO = Path(__file__).parent.parent / "examples" / "demo"
 def test_demo_project_checks_clean(capsys):
     assert main(["check", "--project", str(DEMO)]) == 0
     captured = capsys.readouterr()
-    assert captured.out == "ok: 6 sprites, 8 frames\n"
+    assert captured.out == "ok: 8 sprites, 13 frames\n"
     assert captured.err == ""
 
 
@@ -26,7 +26,9 @@ def test_demo_project_has_the_sprites_later_steps_rely_on():
     sprites, problems = spritefile.load_all(project)
     assert problems == []
     by_id = {sprite.id: sprite for sprite in sprites}
-    assert sorted(by_id) == ["goblin", "ground_light", "sample_slime", "slime", "warrior", "warrior_red"]
+    assert sorted(by_id) == [
+        "arrow", "goblin", "ground_light", "sample_slime", "slime", "spark", "warrior", "warrior_red"
+    ]
 
     warrior = by_id["warrior"]
     assert (warrior.canvas.name, warrior.canvas.width, warrior.canvas.height) == ("unit", 32, 32)
@@ -45,6 +47,31 @@ def test_demo_project_has_the_sprites_later_steps_rely_on():
 
     assert (by_id["goblin"].canvas.name, len(by_id["goblin"].frames), by_id["goblin"].anims) == ("unit", 1, ())
     assert (by_id["ground_light"].canvas.name, by_id["ground_light"].canvas.width) == ("tile", 16)
+
+    assert [frame.points for frame in warrior.frames] == [(("grip", (25, 18)),)] * 2
+    assert [frame.points for frame in red.frames] == [(("grip", (25, 18)),)] * 2
+
+
+def test_a68_the_demo_has_an_arrow_and_a_spark_on_the_effect_class():
+    project, _ = load(DEMO)
+    effect = project.canvases["effect"]
+    assert (effect.width, effect.height, effect.anchor, effect.outline, effect.grounded) == (16, 16, (8, 8), None, False)
+    sprites, _ = spritefile.load_all(project)
+    by_id = {sprite.id: sprite for sprite in sprites}
+
+    arrow = by_id["arrow"]
+    (frame,) = arrow.frames
+    assert arrow.canvas.name == "effect"
+    # The tip is the rightmost drawn pixel, on the anchor's row: the arrow points right.
+    tip_col, tip_row = dict(frame.points)["tip"]
+    assert frame.rows[tip_row][tip_col] != "."
+    assert max(len(row.rstrip(".")) for row in frame.rows) == tip_col + 1
+    assert tip_row == effect.anchor[1]
+
+    spark = by_id["spark"]
+    (burst,) = spark.anims
+    assert (spark.canvas.name, burst.name, burst.loop) == ("effect", "burst", False)
+    assert burst.durations[-1] < burst.durations[0]
 
 
 def test_demo_gitignore_covers_previews_and_build_output():

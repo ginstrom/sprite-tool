@@ -139,12 +139,15 @@ def test_template_config(empty):
     assert problems == []
     assert project.palette_path == empty / "palette.toml"
 
-    unit, tile = project.canvases["unit"], project.canvases["tile"]
-    assert list(project.canvases) == ["unit", "tile"]
+    unit, tile, effect = project.canvases["unit"], project.canvases["tile"], project.canvases["effect"]
+    assert list(project.canvases) == ["unit", "tile", "effect"]
     assert (unit.width, unit.height, unit.anchor, unit.display_scale) == (32, 32, (16, 32), 2)
     assert (unit.outline, unit.grounded) == (frozenset({"k"}), True)
     assert (tile.width, tile.height, tile.anchor, tile.display_scale) == (16, 16, (0, 0), 4)
     assert (tile.outline, tile.grounded) == (None, False)
+    # A67: an effect turns about its centre, floats and may glow.
+    assert (effect.width, effect.height, effect.anchor, effect.display_scale) == (16, 16, (8, 8), 2)
+    assert (effect.outline, effect.grounded) == (None, False)
     assert (project.preview.scale, project.preview.background) == (6, (0x3A, 0x3A, 0x3A, 255))
     assert [(target.type, target.out) for target in project.exports] == [("frames", empty / "out")]
 
@@ -326,7 +329,7 @@ NEW_REFUSALS = {
     "id with a path": (["units/kobold", "--canvas", "unit"], "sprite id 'units/kobold' must match [a-z0-9_]+"),
     "id with a trailing newline": (["kobold\n", "--canvas", "unit"], "sprite id 'kobold\\n' must match [a-z0-9_]+"),
     "empty id": (["", "--canvas", "unit"], "sprite id '' must match [a-z0-9_]+"),
-    "unknown class": (["kobold", "--canvas", "boss"], "unknown canvas class 'boss' (expected one of unit, tile)"),
+    "unknown class": (["kobold", "--canvas", "boss"], "unknown canvas class 'boss' (expected one of unit, tile, effect)"),
     "directory outside the project": (
         ["kobold", "--canvas", "unit", "--dir", "../elsewhere"],
         "--dir ../elsewhere is outside the project",
@@ -370,7 +373,7 @@ def guide(root: Path, capsys) -> str:
 def test_a13_demo_guide_is_short_and_lists_the_palette_and_canvas_classes(capsys):
     text = guide(DEMO, capsys)
     lines = text.splitlines()
-    assert len(lines) < 110
+    assert len(lines) < 130
     assert max(len(line) for line in lines) <= 100
     assert text.isascii()
 
@@ -379,8 +382,9 @@ def test_a13_demo_guide_is_short_and_lists_the_palette_and_canvas_classes(capsys
     for color in project.palette.values():
         red, green, blue, _ = color.rgba
         assert f"{color.key} #{red:02x}{green:02x}{blue:02x} {color.name}" in text
-    assert "unit  32x32  anchor 16,32  display scale 2  outline k, grounded" in lines
-    assert "tile  16x16  anchor 0,0    display scale 4  no rules" in lines
+    assert "unit    32x32  anchor 16,32  display scale 2  outline k, grounded" in lines
+    assert "tile    16x16  anchor 0,0    display scale 4  no rules" in lines
+    assert "effect  16x16  anchor 8,8    display scale 2  no rules" in lines
 
 
 def test_guide_prints_exactly_guide_text(capsys):
@@ -441,7 +445,7 @@ def test_guide_example_is_a_valid_sprite_file_for_the_demo(tmp_path, capsys):
     assert EXAMPLE in guide(root, capsys)
 
     assert main(["check", "--project", str(root)]) == 0
-    assert capsys.readouterr().out == "ok: 8 sprites, 14 frames\n"
+    assert capsys.readouterr().out == "ok: 10 sprites, 19 frames\n"
 
 
 def test_guide_reflects_the_project(tmp_path, capsys):
@@ -514,9 +518,9 @@ def exports_section(root: Path, capsys) -> list[str]:
     return lines[start : end - 2]
 
 
-def test_a26_demo_guide_states_key_rules_exports_and_removed_keys_in_under_110_lines(capsys):
+def test_a26_demo_guide_states_key_rules_exports_and_removed_keys_in_under_130_lines(capsys):
     lines = guide(DEMO, capsys).splitlines()
-    assert len(lines) < 110
+    assert len(lines) < 130
     text = flat("\n".join(lines))
 
     assert "A key is one printable ASCII character except . \" ' \\ and space" in text
@@ -548,10 +552,10 @@ def test_the_palette_limit_in_the_guide_is_the_number_of_keys_a_palette_accepts(
     [
         'runs = { 2 = [[2, "B"]] }',
         "optional: the frame to start from",
-        "# 2. replace whole rows",
-        "# 3. replace pixels",
-        "# 4. move the whole frame by [dx, dy]",
-        "# 5. mirror left to right",
+        "# 3. replace whole rows",
+        "# 4. replace pixels",
+        "# 5. move the whole frame by [dx, dy]",
+        "# 6. mirror the whole frame left to right",
         "[frames.idle_2.runs]",
         "build = false",
         'outline = "auto"',
@@ -699,7 +703,7 @@ def test_a33_a35_guide_names_show_and_runs_and_warns_off_a_generator_script(caps
 def test_a57_guide_names_what_release_05_added(capsys, phrase):
     text = guide(DEMO, capsys)
     assert phrase in flat(text)
-    assert len(text.splitlines()) < 110
+    assert len(text.splitlines()) < 130
 
 
 def test_guide_gives_a_targets_selection_after_its_files(tmp_path, capsys):
@@ -722,3 +726,57 @@ def test_guide_names_the_selection_keys_with_no_targets_too(tmp_path, capsys):
     text = flat(guide(root, capsys))
     assert "EXPORTS none configured A target exports every sprite unless its [[export]] table" in text
     assert "`canvases = [" in text and "`include = [" in text and "`exclude = [" in text
+
+
+# --- guide, 0.6 ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        # A69: points and effects.
+        "[points] # optional: named pixels, [col, row], that a game reads",
+        "`[points]` names pixels of the drawing",
+        "move, mirror, shift and flip carry each point as they carry the pixel under it",
+        "one carried off the canvas is dropped (W008)",
+        "`[frame_points.<frame>]` sets that frame's own, in its final coordinates",
+        "exported as its pixel's centre from the canvas's top left (`[25.5, 18.5]`)",
+        "Phaser has it as the frame's `customData.points`",
+        "the JSON index under `points` by frame",
+        "--points marks named points in magenta",
+        "effect 16x16 anchor 8,8 display scale 2 no rules",
+        "Draw the effect pointing right; the game turns it about the anchor",
+        "Name its leading pixel `tip`",
+        "A one-shot effect is an animation with `loop = false`",
+        # A77: editing frames and resting layers.
+        "move = { rows = [27, 30], cols = [10, 15], by = [-1, -2] } # lift a foot: only that rectangle moves",
+        "mirror = { rows = [25, 31], cols = [10, 21] } # mirror the legs, not the body",
+        "# 2. mirror a rectangle (rows, cols or both) left to right, in place",
+        "sprite show <id> --frame <name> --diff [<other>]",
+        "only the rows that differ from its from frame (or <other>), with ^ under each change",
+        "`[anim.<name>]` holding only `rest = true`, in a layer: its default frame, held as long as the"
+        " base's animation of that name plays",
+        "check warns (W009) of a base animation a layer neither has nor rests through",
+    ],
+)
+def test_a69_a77_guide_names_what_release_06_added(capsys, phrase):
+    text = guide(DEMO, capsys)
+    assert phrase in flat(text)
+    assert len(text.splitlines()) < 130
+
+
+def test_the_guide_examples_point_follows_its_derived_frame(tmp_path):
+    from sprite_tool.guide import EXAMPLE
+
+    root = write_project(tmp_path / "p", MINIMAL_CONFIG.replace("[32, 32]", "[6, 4]").replace("[16, 32]", "[0, 0]"), None)
+    (root / "palette.toml").write_text(
+        "[colors]\n" + "".join(f'{key} = "#{index:02x}0000"\n' for index, key in enumerate("kwbBrR")), encoding="utf-8"
+    )
+    project, _ = load(root)
+    (root / "gem.sprite.toml").write_text(EXAMPLE, encoding="utf-8")
+    sprites, problems = load_all(project)
+    assert problems == []
+    frames = {frame.name: dict(frame.points) for frame in sprites[0].frames}
+    assert frames["idle_0"] == {"eye": (2, 1)}
+    # Moved down a row, mirrored about column 2, shifted right, then flipped.
+    assert frames["idle_1"] == {"eye": (2, 2)}
